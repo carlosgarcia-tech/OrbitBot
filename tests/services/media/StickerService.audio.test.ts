@@ -11,12 +11,14 @@ import { spawnSync } from 'child_process';
 import { mkdtempSync, rmSync, readFileSync, readdirSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import sharp from 'sharp';
 import { StickerService } from '@/services/media/StickerService.js';
 
 const TEMP_DIR = './data/temp';
 
 let dir: string;
 let withAudio: Buffer;
+let longVideo: Buffer;
 let silent: Buffer;
 let image: Buffer;
 let shortAudio: Buffer;
@@ -41,6 +43,12 @@ function duration(file: string): number {
     file,
   ]);
   return Number(result.stdout.toString().trim());
+}
+
+/** Total animation duration in seconds, from the webp frame delays. */
+async function stickerSeconds(webp: Buffer): Promise<number> {
+  const { delay = [] } = await sharp(webp).metadata();
+  return delay.reduce((total, ms) => total + ms, 0) / 1000;
 }
 
 function audioStream(file: string): string {
@@ -73,6 +81,7 @@ function audioTempFiles(): string[] {
 beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'audio-sticker-'));
   const withAudioPath = join(dir, 'with-audio.mp4');
+  const longVideoPath = join(dir, 'long-video.mp4');
   const silentPath = join(dir, 'silent.mp4');
   const imagePath = join(dir, 'image.png');
   const shortPath = join(dir, 'short.ogg');
@@ -101,6 +110,24 @@ beforeAll(() => {
     '-f',
     'lavfi',
     '-i',
+    'testsrc=duration=25:size=160x160:rate=10',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=frequency=440:duration=25',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-c:a',
+    'aac',
+    '-shortest',
+    longVideoPath,
+  ]);
+  ff([
+    '-f',
+    'lavfi',
+    '-i',
     'testsrc=duration=2:size=160x160:rate=12',
     '-c:v',
     'libx264',
@@ -110,10 +137,11 @@ beforeAll(() => {
   ]);
   ff(['-f', 'lavfi', '-i', 'testsrc=duration=1:size=256x256', '-frames:v', '1', imagePath]);
   ff(['-f', 'lavfi', '-i', 'sine=frequency=880:duration=2', '-c:a', 'libopus', shortPath]);
-  ff(['-f', 'lavfi', '-i', 'sine=frequency=880:duration=12', '-c:a', 'libopus', longPath]);
+  ff(['-f', 'lavfi', '-i', 'sine=frequency=880:duration=65', '-c:a', 'libopus', longPath]);
   ff(['-f', 'lavfi', '-i', 'sine=frequency=660:duration=2', '-c:a', 'libmp3lame', mp3Path]);
 
   withAudio = readFileSync(withAudioPath);
+  longVideo = readFileSync(longVideoPath);
   silent = readFileSync(silentPath);
   image = readFileSync(imagePath);
   shortAudio = readFileSync(shortPath);
@@ -147,6 +175,13 @@ describe('StickerService.createAudioSticker', () => {
     expect(parts.waveform).toHaveLength(64);
   }, 30_000);
 
+  it('keeps the visual as long as the audio when it fits', async () => {
+    const parts = await service.createAudioSticker({ visual: longVideo });
+
+    expect(parts.isAnimated).toBe(true);
+    expect(await stickerSeconds(parts.sticker)).toBeGreaterThan(20);
+  }, 60_000);
+
   it('rejects a video without an audio track', async () => {
     await expect(service.createAudioSticker({ visual: silent })).rejects.toThrow('NO_AUDIO');
   }, 30_000);
@@ -172,12 +207,12 @@ describe('StickerService.createAudioSticker', () => {
     expect(parts.audio.length).toBeGreaterThan(0);
   }, 30_000);
 
-  it('caps audio at 10 seconds by default', async () => {
+  it('caps audio at 60 seconds by default', async () => {
     const parts = await service.createAudioSticker({ visual: image, audio: longAudio });
 
     const audioPath = join(dir, 'probe-long.ogg');
     writeFileSync(audioPath, parts.audio);
-    expect(duration(audioPath)).toBeLessThanOrEqual(10.2);
+    expect(duration(audioPath)).toBeLessThanOrEqual(60.2);
   }, 30_000);
 
   it('honours a custom maxSeconds', async () => {

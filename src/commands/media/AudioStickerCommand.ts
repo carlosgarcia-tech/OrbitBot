@@ -37,7 +37,7 @@ export class AudioStickerCommand extends Command {
   aliases = ['sa', 'stickeraudio'];
   usage =
     '!saudio <responde a un video con audio> | foto/video con !saudio respondiendo a un audio';
-  timeout = 90_000;
+  timeout = 120_000;
   examples = ['!saudio'];
   contexts = [CommandContext.BOTH];
 

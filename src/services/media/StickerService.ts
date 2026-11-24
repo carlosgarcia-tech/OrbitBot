@@ -56,8 +56,13 @@ export class StickerService {
   private static readonly STICKER_SIZE = 512;
   /** WhatsApp rejects animated stickers above ~500KB. */
   private static readonly MAX_VIDEO_STICKER_BYTES = 450 * 1024;
-  /** Official editor cuts image stickers at ~10s; reference PR reached 30s. */
-  private static readonly AUDIO_STICKER_MAX_SECONDS = 10;
+  /**
+   * The native editor caps sound at 10s (5s for animated), but the wire
+   * format accepts longer: the reference implementation played 24s on a
+   * phone. The visual tries to match the audio and only falls back to a
+   * looped 10s cut when the size budget does not allow it.
+   */
+  private static readonly AUDIO_STICKER_MAX_SECONDS = 60;
   private static readonly AUDIO_STICKER_MAX_BYTES = 1024 * 1024;
 
   constructor() {
@@ -116,7 +121,11 @@ export class StickerService {
       const { seconds, waveform } = await this.readAudioExtras(out, maxSeconds);
 
       const sticker = isVideo
-        ? await this.videoToSticker(opts.visual)
+        ? await this.videoToSticker(
+            opts.visual,
+            seconds,
+            StickerService.AUDIO_STICKER_MAX_BYTES - audio.length,
+          )
         : await this.imageToSticker(opts.visual);
       const isAnimated = sticker.includes('ANIM');
 
@@ -370,29 +379,68 @@ export class StickerService {
     }
   }
 
-  async videoToSticker(buffer: Buffer): Promise<Buffer> {
+  /**
+   * Encodes a video sticker. `seconds` is the most it may run; `maxBytes` the
+   * size budget. Long clips keep a smooth frame rate, step quality down, and
+   * only then get shortened, because a low-fps sticker looks broken.
+   */
+  async videoToSticker(
+    buffer: Buffer,
+    seconds = 10,
+    maxBytes = StickerService.MAX_VIDEO_STICKER_BYTES,
+  ): Promise<Buffer> {
     const type = await this.getFileType(buffer);
     const tempInput = join(StickerService.TEMP_DIR, `video-${Date.now()}.${type?.ext || 'mp4'}`);
-    const tempOutput = join(StickerService.TEMP_DIR, `sticker-${Date.now()}.webp`);
-    const tempLight = `${tempOutput}.light.webp`;
+    const outputs: string[] = [];
+    const encode = async (fps: number, quality: number, length: number): Promise<Buffer> => {
+      const output = join(StickerService.TEMP_DIR, `sticker-${Date.now()}-${outputs.length}.webp`);
+      outputs.push(output);
+      await this.ffmpegVideoProcess(tempInput, output, fps, quality, length);
+      return readFileSync(output);
+    };
+
     try {
       writeFileSync(tempInput, buffer);
-      await this.ffmpegVideoProcess(tempInput, tempOutput, 15, 75);
-      let resultBuffer = readFileSync(tempOutput);
-      // WhatsApp rejects animated stickers over ~500KB; re-encode lighter once.
-      if (resultBuffer.length > StickerService.MAX_VIDEO_STICKER_BYTES) {
-        await this.ffmpegVideoProcess(tempInput, tempLight, 10, 50);
-        resultBuffer = readFileSync(tempLight);
+      const attempts =
+        seconds <= 10
+          ? [
+              { fps: 15, quality: 75 },
+              { fps: 12, quality: 50 },
+            ]
+          : [
+              { fps: 15, quality: 50 },
+              { fps: 12, quality: 30 },
+            ];
+
+      let result: Buffer = Buffer.alloc(0);
+      for (const { fps, quality } of attempts) {
+        result = await encode(fps, quality, seconds);
+        if (result.length <= maxBytes) return result;
       }
-      this.cleanup(tempInput, tempOutput, tempLight);
-      return resultBuffer;
-    } catch (error) {
-      this.cleanup(tempInput, tempOutput, tempLight);
-      throw error;
+
+      // Still over budget: trim the clip at the same smooth 12 fps instead of
+      // dropping the frame rate further. Sizes are not linear, so re-measure.
+      let length = seconds;
+      for (let attempt = 0; attempt < 3 && result.length > maxBytes; attempt++) {
+        const ratio = Math.min(0.9, (maxBytes / result.length) * 0.95);
+        const fitted = Math.max(10, Math.floor(length * ratio));
+        if (fitted >= length) break;
+        length = fitted;
+        result = await encode(12, 30, length);
+      }
+      return result;
+    } finally {
+      this.cleanup(tempInput, ...outputs);
     }
   }
 
-  private ffmpegVideoProcess(input: string, output: string, fps = 15, qscale = 75): Promise<void> {
+  private ffmpegVideoProcess(
+    input: string,
+    output: string,
+    fps = 15,
+    qscale = 75,
+    seconds = 10,
+  ): Promise<void> {
     // Cover the whole square; a contain fit used to leave transparent bars.
     const filter =
       `scale=320:320:force_original_aspect_ratio=increase,crop=320:320,fps=${fps}` +
@@ -400,7 +448,7 @@ export class StickerService {
 
     // Input-side cut: palettegen otherwise swallows the WHOLE video
     // building its palette, so long videos blew the command timeout.
-    const inputs = ['-t', '10', '-i', input];
+    const inputs = ['-t', String(seconds), '-i', input];
 
     const args = [
       '-y',
@@ -421,7 +469,7 @@ export class StickerService {
       '-vsync',
       '0',
       '-t',
-      '00:00:10',
+      String(seconds),
       output,
     ];
 
