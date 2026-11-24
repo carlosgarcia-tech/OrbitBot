@@ -52,3 +52,7 @@ subbots/
 cards-test
 # Deploy backups (created by deploy.sh, root-owned redis dirs inside)
 orbit-backups/
+
+# Runtime buffers and local artifacts
+database/
+.api-urls.txt

@@ -42,7 +42,7 @@ const mockFfmpeg = (ogg: Buffer) =>
     return {
       stdout,
       stderr: { on: vi.fn() },
-      stdin: { end: vi.fn() },
+      stdin: { end: vi.fn(), on: vi.fn() },
       on: (event: string, cb: (code: number) => void) => {
         if (event === 'close') setTimeout(() => cb(0), 0);
       },
@@ -125,7 +125,7 @@ describe('mp3ToOggOpus', () => {
     mockedSpawn.mockImplementation((() => ({
       stdout: { on: vi.fn() },
       stderr: { on: vi.fn() },
-      stdin: { end: vi.fn() },
+      stdin: { end: vi.fn(), on: vi.fn() },
       on: (event: string, cb: (code: number) => void) => {
         if (event === 'close') setTimeout(() => cb(1), 0);
       },
