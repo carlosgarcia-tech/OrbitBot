@@ -59,10 +59,12 @@ export class StickerService {
   /**
    * The native editor caps sound at 10s (5s for animated), but the wire
    * format accepts longer: the reference implementation played 24s on a
-   * phone. The visual tries to match the audio and only falls back to a
-   * looped 10s cut when the size budget does not allow it.
+   * phone. Visuals are capped lower than audio: encoding a full minute two
+   * or three times made the command slow enough to miss sends.
    */
-  private static readonly AUDIO_STICKER_MAX_SECONDS = 60;
+  private static readonly AUDIO_STICKER_MAX_SECONDS = 30;
+  /** Longest visual attempted; WhatsApp loops it while the audio keeps playing. */
+  private static readonly AUDIO_STICKER_VISUAL_MAX_SECONDS = 20;
   private static readonly AUDIO_STICKER_MAX_BYTES = 1024 * 1024;
 
   constructor() {
@@ -123,7 +125,7 @@ export class StickerService {
       const sticker = isVideo
         ? await this.videoToSticker(
             opts.visual,
-            seconds,
+            Math.min(seconds, StickerService.AUDIO_STICKER_VISUAL_MAX_SECONDS),
             StickerService.AUDIO_STICKER_MAX_BYTES - audio.length,
           )
         : await this.imageToSticker(opts.visual);
@@ -407,10 +409,14 @@ export class StickerService {
               { fps: 15, quality: 75 },
               { fps: 12, quality: 50 },
             ]
-          : [
-              { fps: 15, quality: 50 },
-              { fps: 12, quality: 30 },
-            ];
+          : seconds <= 15
+            ? [
+                { fps: 15, quality: 50 },
+                { fps: 12, quality: 30 },
+              ]
+            : // Longer clips start at 12 fps: a 15 fps pass over 20s is
+              // already too slow to be worth it.
+              [{ fps: 12, quality: 30 }];
 
       let result: Buffer = Buffer.alloc(0);
       for (const { fps, quality } of attempts) {
@@ -421,7 +427,7 @@ export class StickerService {
       // Still over budget: trim the clip at the same smooth 12 fps instead of
       // dropping the frame rate further. Sizes are not linear, so re-measure.
       let length = seconds;
-      for (let attempt = 0; attempt < 3 && result.length > maxBytes; attempt++) {
+      for (let attempt = 0; attempt < 2 && result.length > maxBytes; attempt++) {
         const ratio = Math.min(0.9, (maxBytes / result.length) * 0.95);
         const fitted = Math.max(10, Math.floor(length * ratio));
         if (fitted >= length) break;

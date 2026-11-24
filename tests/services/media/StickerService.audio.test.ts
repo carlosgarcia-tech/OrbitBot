@@ -175,11 +175,11 @@ describe('StickerService.createAudioSticker', () => {
     expect(parts.waveform).toHaveLength(64);
   }, 30_000);
 
-  it('keeps the visual as long as the audio when it fits', async () => {
+  it('keeps more than 15s of visual for a long clip', async () => {
     const parts = await service.createAudioSticker({ visual: longVideo });
 
     expect(parts.isAnimated).toBe(true);
-    expect(await stickerSeconds(parts.sticker)).toBeGreaterThan(20);
+    expect(await stickerSeconds(parts.sticker)).toBeGreaterThan(15);
   }, 60_000);
 
   it('rejects a video without an audio track', async () => {
@@ -207,12 +207,12 @@ describe('StickerService.createAudioSticker', () => {
     expect(parts.audio.length).toBeGreaterThan(0);
   }, 30_000);
 
-  it('caps audio at 60 seconds by default', async () => {
+  it('caps audio at 30 seconds by default', async () => {
     const parts = await service.createAudioSticker({ visual: image, audio: longAudio });
 
     const audioPath = join(dir, 'probe-long.ogg');
     writeFileSync(audioPath, parts.audio);
-    expect(duration(audioPath)).toBeLessThanOrEqual(60.2);
+    expect(duration(audioPath)).toBeLessThanOrEqual(30.2);
   }, 30_000);
 
   it('honours a custom maxSeconds', async () => {

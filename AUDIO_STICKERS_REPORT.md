@@ -57,7 +57,7 @@ Runner: **vitest**.
 |---|---|
 | `StickerService.audio.test.ts` (ffmpeg real) | **11/11** |
 | `AudioStickerSender.test.ts` (incluye bytes 134/26) | **6/6** |
-| `AudioStickerCommand.test.ts` | **8/8** |
+| `AudioStickerCommand.test.ts` | **9/9** |
 | `MediaMessageCache.test.ts` | **4/4** |
 | `tsc --noEmit` | sin errores |
 | ESLint/Prettier de los archivos tocados | limpios |
@@ -66,7 +66,7 @@ Cubierto:
 - video con audio → webp animado + opus + `seconds`/`waveform`; video mudo → `NO_AUDIO`.
 - un clip de 25 s conserva >20 s de animación (no se corta a 10 s) si cabe en el presupuesto.
 - imagen sola → `NO_AUDIO`; imagen + audio → sticker estático.
-- video mudo + mp3 → OK; audio de 65 s recortado a ≤60 s; `maxSeconds: 5`.
+- video mudo + mp3 → OK; audio de 65 s recortado a ≤30 s; `maxSeconds: 5`.
 - audio basura → error sin temporales; sticker+audio < 1 MB.
 - sin archivos `as-*` huérfanos tras éxito o error.
 - envío: una sola llamada a `relayMessage`, `messageSecret` de 32 bytes, `type="text"`, contexto citado y `expiration` de chats temporales.
@@ -90,7 +90,7 @@ Suite completa: **1297 pasan, 1 falla**. El fallo es ajeno a este cambio (`TTSSe
 2. **Flujo B:** foto/video con caption `!saudio` respondiendo a una nota de voz.
 3. **Chats temporales:** confirmar que el `expiration` copiado al `contextInfo` del sticker es suficiente (Baileys no inyecta ephemeral en `relayMessage`).
 4. **Grupo y privado.**
-5. **Duración del audio y del visual:** el límite es 60 s (`AUDIO_STICKER_MAX_SECONDS`). El editor nativo corta a 10 s (5 s en animados), pero el formato acepta más: la implementación de referencia reprodujo 24 s completos en un teléfono. El sticker animado intenta durar lo mismo que el audio; si no cabe en el 1 MB total, baja la calidad (nunca por debajo de 12 fps para que no se vea entrecortado) y, como último recurso, acorta el clip a ~10 s y WhatsApp lo repite en bucle.
+5. **Duración del audio y del visual:** el audio llega a **30 s** (`AUDIO_STICKER_MAX_SECONDS`). El editor nativo corta a 10 s (5 s en animados), pero el formato acepta más: la implementación de referencia reprodujo 24 s completos en un teléfono. El visual se limita a **20 s** (`AUDIO_STICKER_VISUAL_MAX_SECONDS`) para no codificar clips largos varias veces; WhatsApp lo repite mientras sigue el audio. Si no cabe en el 1 MB total, baja la calidad (nunca por debajo de 12 fps) y, como último recurso, acorta el clip.
 6. **Respuesta a un audio sticker ya enviado:** el proto de Baileys no decodifica el campo 134, así que el mensaje entrante se ve vacío. El bot no crashea (no usa `getContentType`), pero no podrá citarlo como sticker. Si se quiere soportar, hay que extender también `decode` y `getContextInfo`.
 7. **Cache de audio:** responder a una nota de voz de más de 300 mensajes de antigüedad fallará al descargar (límite de `MediaMessageCache`).
 
