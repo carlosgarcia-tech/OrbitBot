@@ -16,6 +16,7 @@
 import { writeFileSync, readFileSync, unlinkSync, existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { spawn } from 'child_process';
+import { randomUUID } from 'crypto';
 import { logError, logger } from '@/utils/logger.js';
 
 export interface StickerOptions {
@@ -26,6 +27,29 @@ export interface StickerOptions {
   type?: 'full' | 'crop' | 'circle';
   /** Overlay the corner watermark. Defaults to true. */
   watermark?: boolean;
+}
+
+export interface AudioStickerOptions {
+  /** Image or video that will be the sticker. */
+  visual: Buffer;
+  /** Optional audio; when missing the video's own track is used. */
+  audio?: Buffer;
+  maxSeconds?: number;
+  watermark?: boolean;
+}
+
+export interface AudioStickerParts {
+  /** Animated or static webp sticker. */
+  sticker: Buffer;
+  /** Mono 16 kHz ogg/opus track. */
+  audio: Buffer;
+  /** Rounded-up audio duration, shown by WhatsApp. */
+  seconds: number;
+  /** 64-bar waveform for the audio message. */
+  waveform: Buffer;
+  width: number;
+  height: number;
+  isAnimated: boolean;
 }
 
 interface FileTypeResult {
@@ -46,6 +70,9 @@ export class StickerService {
   private static readonly STICKER_SIZE = 512;
   /** WhatsApp rejects animated stickers above ~500KB. */
   private static readonly MAX_VIDEO_STICKER_BYTES = 450 * 1024;
+  /** Official editor cuts image stickers at ~10s; reference PR reached 30s. */
+  private static readonly AUDIO_STICKER_MAX_SECONDS = 10;
+  private static readonly AUDIO_STICKER_MAX_BYTES = 1024 * 1024;
 
   /**
    * Transparent PNG used as corner watermark. `data/` is a docker volume
@@ -62,10 +89,10 @@ export class StickerService {
     return StickerService.WATERMARK_PATHS.find(path => existsSync(path)) ?? null;
   }
   /** 0.0–1.0. Lower = more discreet. */
-  private static readonly WATERMARK_OPACITY = 0.35;
+  private static readonly WATERMARK_OPACITY = 0.7;
   /** Watermark width in px (static stickers are 512px, animated ones 320px). */
-  private static readonly WATERMARK_WIDTH_IMAGE = 128;
-  private static readonly WATERMARK_WIDTH_VIDEO = 72;
+  private static readonly WATERMARK_WIDTH_IMAGE = 328;
+  private static readonly WATERMARK_WIDTH_VIDEO = 222;
 
   constructor() {
     if (!existsSync(StickerService.TEMP_DIR)) {
@@ -104,6 +131,193 @@ export class StickerService {
     const isVideo = type?.mime.includes('video') || type?.ext === 'gif';
     if (isVideo) return await this.videoToSticker(buffer, options);
     return await this.imageToSticker(buffer, options);
+  }
+
+  /**
+   * Builds the two halves of an audio sticker: webp visual + ogg/opus audio.
+   *
+   * The track comes from `opts.audio` when supplied, otherwise from the
+   * video itself. A silent source throws `NO_AUDIO` so the command can tell
+   * the user what is missing instead of sending a sticker with no sound.
+   */
+  async createAudioSticker(opts: AudioStickerOptions): Promise<AudioStickerParts> {
+    const maxSeconds = opts.maxSeconds ?? StickerService.AUDIO_STICKER_MAX_SECONDS;
+    const type = await this.getFileType(opts.visual);
+    const isVideo = type?.mime.includes('video') || type?.ext === 'gif';
+
+    const id = randomUUID();
+    const src = join(StickerService.TEMP_DIR, `as-src-${id}.bin`);
+    const out = join(StickerService.TEMP_DIR, `as-out-${id}.ogg`);
+
+    try {
+      if (opts.audio) writeFileSync(src, opts.audio);
+      else if (isVideo) writeFileSync(src, opts.visual);
+      else throw new Error('NO_AUDIO');
+
+      if (!(await this.hasAudioTrack(src))) throw new Error('NO_AUDIO');
+      await this.ffmpegOpusProcess(src, out, maxSeconds);
+      const audio = readFileSync(out);
+      const { seconds, waveform } = await this.readAudioExtras(out, maxSeconds);
+
+      const sticker = isVideo
+        ? await this.videoToSticker(opts.visual, { watermark: opts.watermark })
+        : await this.imageToSticker(opts.visual, { watermark: opts.watermark });
+      const isAnimated = sticker.includes('ANIM');
+
+      if (sticker.length + audio.length > StickerService.AUDIO_STICKER_MAX_BYTES) {
+        throw new Error('AUDIO_STICKER_TOO_BIG');
+      }
+      return {
+        sticker,
+        audio,
+        seconds,
+        waveform,
+        width: isAnimated ? 320 : 512,
+        height: isAnimated ? 320 : 512,
+        isAnimated,
+      };
+    } finally {
+      this.cleanup(src, out);
+    }
+  }
+
+  /** Duration + 64-bar waveform WhatsApp draws for the attached clip. */
+  private async readAudioExtras(
+    path: string,
+    maxSeconds: number,
+  ): Promise<{ seconds: number; waveform: Buffer }> {
+    const [duration, pcm] = await Promise.all([this.probeDuration(path), this.readPcm(path)]);
+    const seconds = duration > 0 ? Math.min(Math.ceil(duration), Math.ceil(maxSeconds)) : 5;
+    return { seconds, waveform: StickerService.waveformFromPcm(pcm) };
+  }
+
+  private probeDuration(path: string): Promise<number> {
+    return new Promise(resolve => {
+      const probe = spawn('ffprobe', [
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'csv=p=0',
+        path,
+      ]);
+      let output = '';
+      probe.stdout.on('data', data => {
+        output += data.toString();
+      });
+      probe.on('close', () => resolve(Number.parseFloat(output.trim()) || 0));
+      probe.on('error', () => resolve(0));
+    });
+  }
+
+  /** Raw 8 kHz mono PCM, used only to build the waveform bars. */
+  private readPcm(path: string): Promise<Buffer> {
+    return new Promise(resolve => {
+      const ffmpeg = spawn('ffmpeg', [
+        '-v',
+        'error',
+        '-i',
+        path,
+        '-ac',
+        '1',
+        '-ar',
+        '8000',
+        '-f',
+        's16le',
+        'pipe:1',
+      ]);
+      const chunks: Buffer[] = [];
+      ffmpeg.stdout.on('data', data => chunks.push(data as Buffer));
+      ffmpeg.on('close', code => resolve(code === 0 ? Buffer.concat(chunks) : Buffer.alloc(0)));
+      ffmpeg.on('error', () => resolve(Buffer.alloc(0)));
+    });
+  }
+
+  /** Normalises PCM samples to the 0–100 bars WhatsApp expects. */
+  private static waveformFromPcm(pcm: Buffer, bars = 64): Buffer {
+    const samples = Math.floor(pcm.length / 2);
+    if (samples < bars) return Buffer.alloc(bars, 10);
+
+    const block = Math.floor(samples / bars);
+    const raw: number[] = [];
+    for (let i = 0; i < bars; i++) {
+      let sum = 0;
+      for (let j = 0; j < block; j++) sum += Math.abs(pcm.readInt16LE((i * block + j) * 2));
+      raw.push(sum / block);
+    }
+
+    const scale = Math.max(...raw) > 0 ? 100 / Math.max(...raw) : 1;
+    return Buffer.from(raw.map(value => Math.min(100, Math.floor(value * scale))));
+  }
+
+  /** True when the file has at least one audio stream. */
+  private hasAudioTrack(path: string): Promise<boolean> {
+    return new Promise(resolve => {
+      const probe = spawn('ffprobe', [
+        '-v',
+        'error',
+        '-select_streams',
+        'a:0',
+        '-show_entries',
+        'stream=codec_type',
+        '-of',
+        'csv=p=0',
+        path,
+      ]);
+      let output = '';
+      probe.stdout.on('data', data => {
+        output += data.toString();
+      });
+      probe.on('close', code => resolve(code === 0 && output.trim() === 'audio'));
+      probe.on('error', () => resolve(false));
+    });
+  }
+
+  /** Re-encodes any audio input to mono 48 kHz opus in an ogg container. */
+  private ffmpegOpusProcess(input: string, output: string, seconds: number): Promise<void> {
+    const args = [
+      '-y',
+      '-i',
+      input,
+      '-vn',
+      '-t',
+      String(seconds),
+      '-ac',
+      '1',
+      '-ar',
+      '16000',
+      '-c:a',
+      'libopus',
+      '-b:a',
+      '32k',
+      '-vbr',
+      'on',
+      '-compression_level',
+      '10',
+      '-frame_duration',
+      '20',
+      '-application',
+      'voip',
+      '-avoid_negative_ts',
+      'make_zero',
+      '-map_metadata',
+      '-1',
+      '-f',
+      'ogg',
+      output,
+    ];
+    return new Promise((resolve, reject) => {
+      const ffmpeg = spawn('ffmpeg', args);
+      let stderr = '';
+      ffmpeg.stderr.on('data', data => {
+        stderr += data.toString();
+      });
+      ffmpeg.on('close', code => {
+        code === 0 ? resolve() : reject(new Error(`FFmpeg audio failed: ${stderr}`));
+      });
+      ffmpeg.on('error', reject);
+    });
   }
 
   async addExif(buffer: Buffer, pack: string, author: string): Promise<Buffer> {

@@ -33,7 +33,7 @@ const CREATOR = 'ɪɴɢ. ᴄᴀʀʟᴏꜱ ɢᴀʀᴄɪᴀ';
 const BOT_VERSION = `𝚟${pkg.version}`;
 const REPO_URL = 'https://github.com/carlosgarcia-tech/VaniaBot';
 
-const STICKER_BRANDING = {
+export const STICKER_BRANDING = {
   packname: `👑 ${BOT_NAME} ꜱᴛɪᴄᴋᴇʀꜱ`,
 
   author: [

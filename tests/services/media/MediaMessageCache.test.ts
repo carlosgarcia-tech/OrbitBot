@@ -33,6 +33,16 @@ describe('MediaMessageCache', () => {
     expect(mediaMessageCache.get('group@g.us', 'TXT')).toBeUndefined();
   });
 
+  it('caches audio messages so a quoted voice note can be downloaded', () => {
+    const audio = {
+      key: { id: 'AUD', remoteJid: 'group@g.us', fromMe: false },
+      message: { audioMessage: { url: 'https://mmg.whatsapp.net/a', mediaKey: Buffer.from('k') } },
+    };
+    mediaMessageCache.put(audio as never);
+
+    expect(mediaMessageCache.get('group@g.us', 'AUD')).toBe(audio);
+  });
+
   it('evicts the oldest entries beyond the cap', () => {
     const cap = mediaMessageCache.maxSize;
     for (let i = 0; i <= cap; i++) {

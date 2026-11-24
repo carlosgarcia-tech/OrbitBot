@@ -27,7 +27,7 @@ export class MediaMessageCache {
   readonly maxSize = MAX_ENTRIES;
   private readonly store = new Map<string, WAMessage>();
 
-  /** Caches the message when it carries image/video media. Best-effort. */
+  /** Caches the message when it carries image/video/sticker/audio media. Best-effort. */
   put(message: WAMessage): void {
     try {
       const id = message.key?.id;
@@ -36,7 +36,8 @@ export class MediaMessageCache {
       const hasMedia =
         message.message?.imageMessage ||
         message.message?.videoMessage ||
-        message.message?.stickerMessage;
+        message.message?.stickerMessage ||
+        message.message?.audioMessage;
       if (!hasMedia) return;
 
       const key = `${remoteJid}:${id}`;
