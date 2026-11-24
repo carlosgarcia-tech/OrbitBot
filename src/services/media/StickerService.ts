@@ -328,21 +328,13 @@ export class StickerService {
   }
 
   private ffmpegImageProcess(input: string, output: string): Promise<void> {
-    const base = 'scale=512:512:flags=lanczos:force_original_aspect_ratio=decrease,format=rgba';
-    const tail = 'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000,setsar=1';
+    // Cover, not contain: fill the square and crop the overflow, so the
+    // subject is not shrunk into transparent side/top padding.
+    const filter =
+      'scale=512:512:flags=lanczos:force_original_aspect_ratio=increase,' +
+      'crop=512:512,format=rgba,setsar=1';
 
-    const args = [
-      '-y',
-      '-i',
-      input,
-      '-vf',
-      `${base},${tail}`,
-      '-f',
-      'webp',
-      '-quality',
-      '100',
-      output,
-    ];
+    const args = ['-y', '-i', input, '-vf', filter, '-f', 'webp', '-quality', '100', output];
 
     return new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', args);
@@ -401,20 +393,20 @@ export class StickerService {
   }
 
   private ffmpegVideoProcess(input: string, output: string, fps = 15, qscale = 75): Promise<void> {
-    const scale = `scale='min(320,iw)':min'(320,ih)':force_original_aspect_ratio=decrease,fps=${fps}`;
-    const tail =
-      'pad=320:320:-1:-1:color=white@0.0,split [a][b]; [a] palettegen=reserve_transparent=on:transparency_color=ffffff [p]; [b][p] paletteuse';
+    // Cover the whole square; a contain fit used to leave transparent bars.
+    const filter =
+      `scale=320:320:force_original_aspect_ratio=increase,crop=320:320,fps=${fps}` +
+      ',split [a][b]; [a] palettegen=reserve_transparent=on:transparency_color=ffffff [p]; [b][p] paletteuse';
 
     // Input-side cut: palettegen otherwise swallows the WHOLE video
     // building its palette, so long videos blew the command timeout.
     const inputs = ['-t', '10', '-i', input];
 
-    const filter = ['-vf', `${scale},${tail}`];
-
     const args = [
       '-y',
       ...inputs,
-      ...filter,
+      '-vf',
+      filter,
       '-vcodec',
       'libwebp',
       '-lossless',
