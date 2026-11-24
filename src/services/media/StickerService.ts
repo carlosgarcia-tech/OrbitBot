@@ -3,12 +3,9 @@
  *
  * OrbitBot services module exposing `StickerService`, `StickerOptions`.
  *
- * Every sticker created through `createSticker` / `imageToSticker` /
- * `videoToSticker` gets a small, semi-transparent corner watermark burned
- * into the pixels (so external `!wm` / `!take` bots cannot strip it by only
- * rewriting the EXIF block). If `./data/assets/watermark.png` and the copy
- * under `./static/assets/` are both missing, the sticker is generated without
- * watermark and a warning is logged once.
+ * `createSticker` / `imageToSticker` / `videoToSticker` produce the plain
+ * webp: static images are scaled to 512px, videos to 320px through a
+ * palette. Pack metadata is added afterwards by `addExif`.
  *
  * @author **Carlos G**
  */
@@ -19,23 +16,12 @@ import { spawn } from 'child_process';
 import { randomUUID } from 'crypto';
 import { logError, logger } from '@/utils/logger.js';
 
-export interface StickerOptions {
-  pack?: string;
-  author?: string;
-  categories?: string[];
-  quality?: number;
-  type?: 'full' | 'crop' | 'circle';
-  /** Overlay the corner watermark. Defaults to true. */
-  watermark?: boolean;
-}
-
 export interface AudioStickerOptions {
   /** Image or video that will be the sticker. */
   visual: Buffer;
   /** Optional audio; when missing the video's own track is used. */
   audio?: Buffer;
   maxSeconds?: number;
-  watermark?: boolean;
 }
 
 export interface AudioStickerParts {
@@ -74,40 +60,10 @@ export class StickerService {
   private static readonly AUDIO_STICKER_MAX_SECONDS = 10;
   private static readonly AUDIO_STICKER_MAX_BYTES = 1024 * 1024;
 
-  /**
-   * Transparent PNG used as corner watermark. `data/` is a docker volume
-   * seeded once, so files added to the image later never reach it: the copy
-   * baked into the image under static/ is the durable location.
-   */
-  private static readonly WATERMARK_PATHS = [
-    './data/assets/watermark.png',
-    './static/assets/watermark.png',
-  ];
-
-  /** First existing watermark asset, or null when none is present. */
-  private static get watermarkPath(): string | null {
-    return StickerService.WATERMARK_PATHS.find(path => existsSync(path)) ?? null;
-  }
-  /** 0.0–1.0. Lower = more discreet. */
-  private static readonly WATERMARK_OPACITY = 0.7;
-  /** Watermark width in px (static stickers are 512px, animated ones 320px). */
-  private static readonly WATERMARK_WIDTH_IMAGE = 328;
-  private static readonly WATERMARK_WIDTH_VIDEO = 222;
-
   constructor() {
     if (!existsSync(StickerService.TEMP_DIR)) {
       mkdirSync(StickerService.TEMP_DIR, { recursive: true });
     }
-    if (!StickerService.watermarkPath) {
-      logger.warn(
-        `[StickerService] No existe ${StickerService.WATERMARK_PATHS.join(' ni ')}, los stickers saldrán sin marca de agua`,
-      );
-    }
-  }
-
-  /** True when the watermark was not disabled and the asset exists on disk. */
-  private canWatermark(requested: boolean | undefined): boolean {
-    return requested !== false && StickerService.watermarkPath !== null;
   }
 
   private async getFileType(buffer: Buffer): Promise<{ mime: string; ext: string } | null> {
@@ -126,11 +82,11 @@ export class StickerService {
     }
   }
 
-  async createSticker(buffer: Buffer, options: StickerOptions = {}): Promise<Buffer> {
+  async createSticker(buffer: Buffer): Promise<Buffer> {
     const type = await this.getFileType(buffer);
     const isVideo = type?.mime.includes('video') || type?.ext === 'gif';
-    if (isVideo) return await this.videoToSticker(buffer, options);
-    return await this.imageToSticker(buffer, options);
+    if (isVideo) return await this.videoToSticker(buffer);
+    return await this.imageToSticker(buffer);
   }
 
   /**
@@ -160,8 +116,8 @@ export class StickerService {
       const { seconds, waveform } = await this.readAudioExtras(out, maxSeconds);
 
       const sticker = isVideo
-        ? await this.videoToSticker(opts.visual, { watermark: opts.watermark })
-        : await this.imageToSticker(opts.visual, { watermark: opts.watermark });
+        ? await this.videoToSticker(opts.visual)
+        : await this.imageToSticker(opts.visual);
       const isAnimated = sticker.includes('ANIM');
 
       if (sticker.length + audio.length > StickerService.AUDIO_STICKER_MAX_BYTES) {
@@ -355,48 +311,38 @@ export class StickerService {
     }
   }
 
-  async imageToSticker(buffer: Buffer, options: StickerOptions = {}): Promise<Buffer> {
+  async imageToSticker(buffer: Buffer): Promise<Buffer> {
     const tempInput = join(StickerService.TEMP_DIR, `input-${Date.now()}.png`);
     const tempOutput = join(StickerService.TEMP_DIR, `output-${Date.now()}.webp`);
     try {
       writeFileSync(tempInput, buffer);
-      await this.ffmpegImageProcess(tempInput, tempOutput, options.watermark);
+      await this.ffmpegImageProcess(tempInput, tempOutput);
       const resultBuffer = readFileSync(tempOutput);
       this.cleanup(tempInput, tempOutput);
       return resultBuffer;
     } catch {
       this.cleanup(tempInput, tempOutput);
       logger.warn('[StickerService] FFmpeg falló, usando jimp fallback');
-      return await this.imageToStickerJimp(buffer, options);
+      return await this.imageToStickerJimp(buffer);
     }
   }
 
-  private ffmpegImageProcess(input: string, output: string, watermark?: boolean): Promise<void> {
-    const watermarkPath = this.canWatermark(watermark) ? StickerService.watermarkPath : null;
+  private ffmpegImageProcess(input: string, output: string): Promise<void> {
     const base = 'scale=512:512:flags=lanczos:force_original_aspect_ratio=decrease,format=rgba';
     const tail = 'pad=512:512:(ow-iw)/2:(oh-ih)/2:color=#00000000,setsar=1';
 
-    // The watermark goes on the already-scaled image and BEFORE the pad, so it
-    // sits in the corner of the real content, not in the transparent padding.
-    const args = watermarkPath
-      ? [
-          '-y',
-          '-i',
-          input,
-          '-i',
-          watermarkPath,
-          '-filter_complex',
-          `[0:v]${base}[v];` +
-            `[1:v]scale=${StickerService.WATERMARK_WIDTH_IMAGE}:-1,format=rgba,` +
-            `colorchannelmixer=aa=${StickerService.WATERMARK_OPACITY}[wm];` +
-            `[v][wm]overlay=W-w-6:H-h-6:format=auto,${tail}`,
-          '-f',
-          'webp',
-          '-quality',
-          '100',
-          output,
-        ]
-      : ['-y', '-i', input, '-vf', `${base},${tail}`, '-f', 'webp', '-quality', '100', output];
+    const args = [
+      '-y',
+      '-i',
+      input,
+      '-vf',
+      `${base},${tail}`,
+      '-f',
+      'webp',
+      '-quality',
+      '100',
+      output,
+    ];
 
     return new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', args);
@@ -411,7 +357,7 @@ export class StickerService {
     });
   }
 
-  private async imageToStickerJimp(buffer: Buffer, options: StickerOptions = {}): Promise<Buffer> {
+  private async imageToStickerJimp(buffer: Buffer): Promise<Buffer> {
     const { Jimp } = await import('jimp');
     const image = await Jimp.read(buffer);
     image.cover({ w: StickerService.STICKER_SIZE, h: StickerService.STICKER_SIZE });
@@ -422,7 +368,7 @@ export class StickerService {
     try {
       const pngBuffer = await image.getBuffer('image/png');
       writeFileSync(tempInput, pngBuffer);
-      await this.ffmpegImageProcess(tempInput, tempOutput, options.watermark);
+      await this.ffmpegImageProcess(tempInput, tempOutput);
       const result = readFileSync(tempOutput);
       this.cleanup(tempInput, tempOutput);
       return result;
@@ -432,18 +378,18 @@ export class StickerService {
     }
   }
 
-  async videoToSticker(buffer: Buffer, options: StickerOptions = {}): Promise<Buffer> {
+  async videoToSticker(buffer: Buffer): Promise<Buffer> {
     const type = await this.getFileType(buffer);
     const tempInput = join(StickerService.TEMP_DIR, `video-${Date.now()}.${type?.ext || 'mp4'}`);
     const tempOutput = join(StickerService.TEMP_DIR, `sticker-${Date.now()}.webp`);
     const tempLight = `${tempOutput}.light.webp`;
     try {
       writeFileSync(tempInput, buffer);
-      await this.ffmpegVideoProcess(tempInput, tempOutput, 15, 75, options.watermark);
+      await this.ffmpegVideoProcess(tempInput, tempOutput, 15, 75);
       let resultBuffer = readFileSync(tempOutput);
       // WhatsApp rejects animated stickers over ~500KB; re-encode lighter once.
       if (resultBuffer.length > StickerService.MAX_VIDEO_STICKER_BYTES) {
-        await this.ffmpegVideoProcess(tempInput, tempLight, 10, 50, options.watermark);
+        await this.ffmpegVideoProcess(tempInput, tempLight, 10, 50);
         resultBuffer = readFileSync(tempLight);
       }
       this.cleanup(tempInput, tempOutput, tempLight);
@@ -454,35 +400,16 @@ export class StickerService {
     }
   }
 
-  private ffmpegVideoProcess(
-    input: string,
-    output: string,
-    fps = 15,
-    qscale = 75,
-    watermark?: boolean,
-  ): Promise<void> {
-    const watermarkPath = this.canWatermark(watermark) ? StickerService.watermarkPath : null;
-
+  private ffmpegVideoProcess(input: string, output: string, fps = 15, qscale = 75): Promise<void> {
     const scale = `scale='min(320,iw)':min'(320,ih)':force_original_aspect_ratio=decrease,fps=${fps}`;
     const tail =
       'pad=320:320:-1:-1:color=white@0.0,split [a][b]; [a] palettegen=reserve_transparent=on:transparency_color=ffffff [p]; [b][p] paletteuse';
 
     // Input-side cut: palettegen otherwise swallows the WHOLE video
     // building its palette, so long videos blew the command timeout.
-    const inputs = watermarkPath
-      ? ['-t', '10', '-i', input, '-i', watermarkPath]
-      : ['-t', '10', '-i', input];
+    const inputs = ['-t', '10', '-i', input];
 
-    // The watermark enters before palettegen, so it is part of the palette.
-    const filter = watermarkPath
-      ? [
-          '-filter_complex',
-          `[0:v]${scale},format=rgba[v];` +
-            `[1:v]scale=${StickerService.WATERMARK_WIDTH_VIDEO}:-1,format=rgba,` +
-            `colorchannelmixer=aa=${StickerService.WATERMARK_OPACITY}[wm];` +
-            `[v][wm]overlay=W-w-4:H-h-4:format=auto,${tail}`,
-        ]
-      : ['-vf', `${scale},${tail}`];
+    const filter = ['-vf', `${scale},${tail}`];
 
     const args = [
       '-y',
