@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.0.1] - 2026-11-25
+
+### Changed
+
+- Sticker pack metadata is now minimal: title `ᴏʀʙɪᴛʙᴏᴛ` and publisher line `ʙʏ ᴄᴀʀʟᴏꜱ ɢ`, replacing the long multi-line branding.
+
 ## [8.0.0] - 2026-11-25
 
 ### Changed

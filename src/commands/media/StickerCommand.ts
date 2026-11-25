@@ -17,36 +17,16 @@ import { downloadMediaMessage, type WAMessage } from 'baileys';
 import { StickerHelper } from '@/utils/StickerHelper.js';
 import { StickerService } from '@/services/media/StickerService.js';
 import { mediaMessageCache } from '@/services/media/MediaMessageCache.js';
-import pkg from '../../../package.json' with { type: 'json' };
 
 /**
  * Pack metadata shown in WhatsApp's "sticker info" screen.
  *
  * WhatsApp shows `packname` as the title and `author` as the publisher line.
- * Keep the FIRST line of each field short: long text gets cut with "..." in
- * the sticker tray, and only the full info screen shows everything.
- *
- * If multi-line looks off on your WhatsApp version, replace "\n" with " · ".
+ * Keep both short: the sticker tray cuts long text with "...".
  */
-const BOT_NAME = 'ᴏʀʙɪᴛʙᴏᴛ';
-const CREATOR = 'ɪɴɢ. ᴄᴀʀʟᴏꜱ ɢᴀʀᴄɪᴀ';
-const BOT_VERSION = `𝚟${pkg.version}`;
-const REPO_URL = 'https://github.com/carlosgarcia-tech/OrbitBot';
-
 export const STICKER_BRANDING = {
-  packname: `👑 ${BOT_NAME} ꜱᴛɪᴄᴋᴇʀꜱ`,
-
-  author: [
-    `✦ ᴇʟ ʙᴏᴛ ᴍᴀꜱ ɢʀᴀɴᴅᴇ ᴅᴇ ᴡʜᴀᴛꜱᴀᴘᴘ`,
-    `✦ ᴍɪ ᴄʀᴇᴀᴅᴏʀ (ʟᴏ ʜɪᴢᴏ ʙɪᴇɴ):`,
-    CREATOR,
-    `✦ ᴏᴘᴇɴ ꜱᴏᴜʀᴄᴇ: ᴘᴇʀꜰᴇᴄᴄɪᴏɴ ᴘᴀʀᴀ ᴇꜱᴛᴜᴅɪᴀʀ · ${BOT_VERSION}`,
-    REPO_URL ? `✦ ${REPO_URL}` : '',
-    `✦ ᴛᴜ ꜱᴛɪᴄᴋᴇʀ, ᴍɪ ᴛᴀʟᴇɴᴛᴏ`,
-    `ɴᴏ ᴀꜰɪʟɪᴀᴅᴏ ᴀ ᴡʜᴀᴛꜱᴀᴘᴘ ɴɪ ᴍᴇᴛᴀ · ᴅᴇᴍᴀꜱɪᴀᴅᴏ ɢʀᴀɴᴅᴇ ᴘᴀʀᴀ ᴇʟʟᴏꜱ`,
-  ]
-    .filter(Boolean)
-    .join('\n'),
+  packname: 'ᴏʀʙɪᴛʙᴏᴛ',
+  author: 'ʙʏ ᴄᴀʀʟᴏꜱ ɢ',
 } as const;
 
 /** Command handler for `!sticker`: Convert image/video to sticker. */
