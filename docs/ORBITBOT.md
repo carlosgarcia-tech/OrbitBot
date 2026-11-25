@@ -231,8 +231,8 @@ Un **subbot** es otro número de WhatsApp (una segunda sesión de Baileys) opera
 - Los subbots usan `SubBotMessageHandler` con su propia cadena de middlewares (mismos pasos, un `AntiSpamService` por instancia).
 - Ejecutan **prácticamente todos los comandos del `commandRegistry` global** (mismo catálogo que el principal), con `MessageContext` marcado como `subbot<slot>`.
 - Filtros propios:
-  - Los toggles del bot principal (`orbiton/orbitoff/orbitstatus`) sin argumento se ignoran en subbots.
-  - En grupos, el usuario debe activar el bot para ese subbot concreto con `.orbiton` (tabla `orbit_toggle`, por `chatJid` + `botId`).
+  - Los toggles del bot principal (`orbit-on/orbit-off/orbit-status`) sin argumento se ignoran en subbots.
+  - En grupos, el usuario debe activar el bot para ese subbot concreto con `.orbit-on <slot>` (tabla `orbit_toggle`, por `chatJid` + `botId`).
   - Dedup en memoria por instancia (TTL 60s) + ledger durable `processed_messages` en SQLite.
 - `handleGroupUpdate`: bienvenidas/despedidas y AntiArab.
 

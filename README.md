@@ -235,6 +235,7 @@ OrbitBot/
 
 - Node.js 20+
 - A WhatsApp account for the bot
+- Your own WhatsApp number added to `OWNERS` / `OWNER_JIDS` (the bot only turns on for its owners)
 - FFmpeg, Python 3 and LibreOffice (document/media commands)
 - A [Groq API key](https://console.groq.com/keys) (free tier available — optional, for AI features)
 
@@ -300,16 +301,24 @@ Useful scripts:
 
 Auth on first run: scan the QR, or use `USE_PAIRING_CODE=true` with `PHONE_NUMBER` to get a linking code. The session persists in `SESSION_PATH` (default `./orbitsession`).
 
+### Owner number and first activation
+
+**Add your number before starting.** The bot only accepts commands from the numbers listed in `OWNERS` / `OWNER_JIDS`; both accept a plain number (`5215512345678`) or a full JID (`5215512345678@s.whatsapp.net`). Without an owner number in `.env` nobody can turn the bot on.
+
+**First time in a group:** the bot stays silent until its owner sends **`.orbit-on`** in that group. After that first activation it answers normally. Use `.orbit-off` to pause it and `.orbit-status` to see whether it is on. For a SubBot, target its slot: `.orbit-on 2`.
+
+The old names (`.orbiton`, `.orbitoff`, `.orbitstatus`, `.boton`, `.botoff`, `.encender`, `.apagar`) still work as aliases, but this README uses the hyphenated ones.
+
 ---
 
 ## Configuration
 
 ### Required
 
-| Variable                | Description                               | Example          |
-| ----------------------- | ----------------------------------------- | ---------------- |
-| `OWNERS` / `OWNER_JIDS` | Your WhatsApp number or JID (bot owner)   | `5215512345678`  |
-| `PHONE_NUMBER`          | Bot number (needed for pairing-code auth) | `+5215512345678` |
+| Variable                | Description                                           | Example          |
+| ----------------------- | ----------------------------------------------------- | ---------------- |
+| `OWNERS` / `OWNER_JIDS` | Your WhatsApp number(s); required to activate the bot | `5215512345678`  |
+| `PHONE_NUMBER`          | Bot number (needed for pairing-code auth)             | `+5215512345678` |
 
 ### AI
 
@@ -373,6 +382,7 @@ OrbitBot has 300+ commands in 15 categories. Every command declares `name`, `ali
 | Domain             | Examples                                                                 |
 | ------------------ | ------------------------------------------------------------------------ |
 | System             | `.ping`, `.status`, `.health`, `.sysstats`, `.clearcache`                |
+| Group toggle       | `.orbit-on`, `.orbit-off`, `.orbit-status` (owner only)                  |
 | AI & Chat          | AI mention replies, audio transcription, translation                     |
 | Moderation         | `.kick` (`.expulsar`), `.warn`, `.mutelist`, antilink, anti-arab         |
 | Economy            | `.loteria` (buy/status/draw/`reiniciar`), loans, black market, `.shop`   |

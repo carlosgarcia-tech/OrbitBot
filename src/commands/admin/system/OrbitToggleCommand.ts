@@ -1,8 +1,8 @@
 /**
  * OrbitToggleCommand.ts
  *
- * admin command `orbitoff` — Disables Orbit in this group
- * Usage: !orbitoff [slot]
+ * admin command `orbit-off` — Disables Orbit in this group
+ * Usage: !orbit-off [slot]
  *
  * @author **Carlos G**
  */
@@ -17,16 +17,16 @@ import {
 import { logError } from '@/utils/logger.js';
 import { serviceManager } from '@/services/system/Servicemanager.js';
 
-/** Command handler for `!orbitoff`: Disables Orbit in this group. */
+/** Command handler for `!orbit-off`: Disables Orbit in this group. */
 export class OrbitOffCommand extends Command {
-  name = 'orbitoff';
+  name = 'orbit-off';
   description = 'Desactiva a Orbit en este grupo';
   category = CommandCategory.ADMIN;
   aliases = ['orbitoff', 'botoff', 'apagar'];
   cooldown = 3000;
   contexts = [CommandContext.GROUP];
-  usage = '!orbitoff [slot]';
-  examples = ['!orbitoff', '!orbitoff 1', '!orbitoff 2'];
+  usage = '!orbit-off [slot]';
+  examples = ['!orbit-off', '!orbit-off 1', '!orbit-off 2'];
   permissions = { user: [PermissionLevel.OWNER], bot: [] };
 
   async execute(ctx: MessageContext): Promise<void> {
@@ -59,7 +59,7 @@ export class OrbitOffCommand extends Command {
       await ctx.react('🔴');
       await ctx.reply(
         `˚₊· ͟͟͞͞➳ *${botName} está descansando* ˚₊· ͟͟͞͞➳\n\n` +
-          `No voy a responder hasta que me activen con *!orbiton${targetSlot ? ' ' + targetSlot : ''}*.\n\n` +
+          `No voy a responder hasta que me activen con *!orbit-on${targetSlot ? ' ' + targetSlot : ''}*.\n\n` +
           `_Me apagó @${ctx.sender.pushName || 'admin'}_ ✦`,
       );
     } catch (error) {
@@ -70,14 +70,14 @@ export class OrbitOffCommand extends Command {
 }
 
 export class OrbitOnCommand extends Command {
-  name = 'orbiton';
+  name = 'orbit-on';
   description = 'Activa a Orbit en este grupo';
   category = CommandCategory.ADMIN;
   aliases = ['orbiton', 'boton', 'encender'];
   cooldown = 3000;
   contexts = [CommandContext.GROUP];
-  usage = '!orbiton [slot]';
-  examples = ['!orbiton', '!orbiton 1', '!orbiton 2'];
+  usage = '!orbit-on [slot]';
+  examples = ['!orbit-on', '!orbit-on 1', '!orbit-on 2'];
   permissions = { user: [PermissionLevel.OWNER], bot: [] };
 
   async execute(ctx: MessageContext): Promise<void> {
@@ -121,14 +121,14 @@ export class OrbitOnCommand extends Command {
 }
 
 export class OrbitStatusCommand extends Command {
-  name = 'orbitstatus';
+  name = 'orbit-status';
   description = 'Muestra el estado de Orbit en este grupo';
   category = CommandCategory.ADMIN;
   aliases = ['orbitstatus', 'botstatus'];
   cooldown = 3000;
   contexts = [CommandContext.GROUP];
-  usage = '!orbitstatus';
-  examples = ['!orbitstatus'];
+  usage = '!orbit-status';
+  examples = ['!orbit-status'];
   permissions = { user: [PermissionLevel.USER], bot: [] };
 
   async execute(ctx: MessageContext): Promise<void> {

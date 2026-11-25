@@ -20,7 +20,20 @@ import type { BotConfig } from '@/types/index.js';
  * import { config } from '@/config/index.js';
  * console.log(config.name);
  */
-export const ORBIT_TOGGLE_COMMANDS: readonly string[] = ['orbiton', 'orbitoff', 'orbitstatus'];
+/** Every accepted toggle spelling: routing must work while the bot is off. */
+export const ORBIT_TOGGLE_COMMANDS: readonly string[] = [
+  'orbit-on',
+  'orbit-off',
+  'orbit-status',
+  'orbiton',
+  'orbitoff',
+  'orbitstatus',
+  'boton',
+  'botoff',
+  'botstatus',
+  'encender',
+  'apagar',
+];
 
 export const config: BotConfig = {
   /** Bot display name */

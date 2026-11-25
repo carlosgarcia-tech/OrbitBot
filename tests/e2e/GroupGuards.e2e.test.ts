@@ -9,7 +9,7 @@
  *   - Alternative prefixes work the same in groups as in DMs.
  *   - Never-enabled group: the orbit-toggle guard swallows the message
  *     silently (production semantics: the bot is off in that chat until an
- *     owner runs !orbiton).
+ *     owner runs .orbit-on).
  *
  * These tests exercise the guard stretch the DM tests don't cover:
  * handleMutedUser → handleOrbitToggle → handleAntilink on ctx.chat.isGroup.
@@ -87,6 +87,25 @@ describe('e2e: group guards', () => {
       // The orbit-toggle guard drops the message without replying: no
       // Pong or any other send to the group.
       expect(socket.sent).toHaveLength(0);
+    },
+    TIMEOUT,
+  );
+
+  it(
+    'the owner activates a never-enabled group with .orbit-on',
+    async () => {
+      const { config } = await import('@/config/index.js');
+      const ownerPhone = config.owners.find(owner => !owner.includes('@lid'));
+      expect(ownerPhone).toBeDefined();
+      const ownerJid = `${ownerPhone}@s.whatsapp.net`;
+
+      socket.receive(groupTextMessage('.orbit-on', OTHER_GROUP, ownerJid));
+      await wait();
+      expect(socket.reactions()).toContain('🟢');
+
+      socket.receive(groupTextMessage('!ping', OTHER_GROUP, senderJid(4)));
+      await wait();
+      expect(socket.texts().some(t => t.startsWith('🏓 Pong!'))).toBe(true);
     },
     TIMEOUT,
   );

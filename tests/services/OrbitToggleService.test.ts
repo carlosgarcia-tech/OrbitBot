@@ -38,23 +38,23 @@ describe('OrbitToggleService guard', () => {
 
   describe('isAllowedForMain', () => {
     it('passes bare toggle commands through so the main bot executes them', async () => {
-      for (const cmd of ['orbiton', 'orbitoff', 'orbitstatus']) {
+      for (const cmd of ['orbit-on', 'orbit-off', 'orbit-status', 'orbiton', 'orbitoff']) {
         await expect(service.isAllowedForMain('123@g.us', cmd, [])).resolves.toBe(true);
       }
       expect(db.get).not.toHaveBeenCalled();
     });
 
     it('swallows slot-addressed toggle commands (the subbot handles them)', async () => {
-      await expect(service.isAllowedForMain('123@g.us', 'orbiton', ['2'])).resolves.toBe(false);
+      await expect(service.isAllowedForMain('123@g.us', 'orbit-on', ['2'])).resolves.toBe(false);
       expect(db.get).not.toHaveBeenCalled();
     });
 
     it('passes toggle commands with invalid slot args through (executed by main)', async () => {
       // Only VALID slots (>0) are swallowed; invalid ones behave like a
       // bare toggle — OrbitOnCommand ignores invalid slot args anyway.
-      await expect(service.isAllowedForMain('123@g.us', 'orbiton', ['0'])).resolves.toBe(true);
-      await expect(service.isAllowedForMain('123@g.us', 'orbitoff', ['-3'])).resolves.toBe(true);
-      await expect(service.isAllowedForMain('123@g.us', 'orbiton', ['abc'])).resolves.toBe(true);
+      await expect(service.isAllowedForMain('123@g.us', 'orbit-on', ['0'])).resolves.toBe(true);
+      await expect(service.isAllowedForMain('123@g.us', 'orbit-off', ['-3'])).resolves.toBe(true);
+      await expect(service.isAllowedForMain('123@g.us', 'orbit-on', ['abc'])).resolves.toBe(true);
     });
 
     it('passes non-toggle messages when the main bot is enabled', async () => {

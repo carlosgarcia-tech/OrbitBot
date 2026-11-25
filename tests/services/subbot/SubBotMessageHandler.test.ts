@@ -288,9 +288,9 @@ describe('SubBotMessageHandler', () => {
     });
 
     it('skips bare orbit-toggle commands (they belong to the main bot)', async () => {
-      const { execute } = registerCommand('orbiton');
+      const { execute } = registerCommand('orbit-on');
 
-      await handler.handleMessage(makeMessage('.orbiton'), sock, subConfig);
+      await handler.handleMessage(makeMessage('.orbit-on'), sock, subConfig);
 
       expect(execute).not.toHaveBeenCalled();
       expect(mockIsAllowedForSubbot).not.toHaveBeenCalled();

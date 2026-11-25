@@ -173,8 +173,8 @@ describe('Command name and alias uniqueness', () => {
         // Multi-word names allowed: the pipeline resolves `!r cuadri` via
         // fullCommand (2 words max, see MainMessagePipeline.resolveAndExecute)
         expect(cmd.name, `${label}: el name debe ser minúsculas`).toBe(cmd.name.toLowerCase());
-        expect(cmd.name, `${label}: el name solo puede tener [a-z0-9_ ]`).toMatch(
-          /^[a-z0-9_]+( [a-z0-9_]+)?$/,
+        expect(cmd.name, `${label}: el name solo puede tener [a-z0-9_- ]`).toMatch(
+          /^[a-z0-9_-]+(?: [a-z0-9_-]+)?$/,
         );
         expect(
           new Set(cmd.aliases).size,
