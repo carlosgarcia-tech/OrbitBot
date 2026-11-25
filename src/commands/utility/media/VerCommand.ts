@@ -31,6 +31,44 @@ function hasContent(content?: proto.IMessage | null): boolean {
   );
 }
 
+/**
+ * Compact, serialisable view of a message for production logs: which wrapper
+ * it uses, which inner keys it carries and whether the media is downloadable
+ * (url/directPath/mediaKey). Base64 fields are never included.
+ */
+function describeContent(message?: proto.IMessage | null): Record<string, unknown> {
+  const content = normalizeMessageContent(message);
+  const media =
+    content?.imageMessage ?? content?.videoMessage ?? content?.audioMessage ?? undefined;
+  const fileLength = media?.fileLength;
+  return {
+    wrappers: message ? Object.keys(message) : [],
+    keys: content ? Object.keys(content) : [],
+    url: Boolean(media?.url),
+    directPath: Boolean(media?.directPath),
+    mediaKey: Boolean(media?.mediaKey),
+    fileLength: fileLength === null || fileLength === undefined ? undefined : String(fileLength),
+    mimetype: media?.mimetype ?? undefined,
+  };
+}
+
+/** pino drops a bare Error passed as the second argument, so flatten it. */
+function describeError(error: unknown): Record<string, unknown> {
+  if (!(error instanceof Error)) return { value: String(error) };
+  const boom = error as Error & {
+    status?: number;
+    statusCode?: number;
+    output?: { payload?: unknown };
+  };
+  return {
+    name: error.name,
+    message: error.message,
+    status: boom.status ?? boom.statusCode,
+    data: boom.output?.payload,
+    stack: error.stack,
+  };
+}
+
 /** Command handler for `!ver`: re-sends the quoted message as a normal one. */
 export class VerCommand extends Command {
   name = 'ver';
@@ -78,6 +116,9 @@ export class VerCommand extends Command {
     const cachedContent = normalizeMessageContent(cachedMessage?.message);
     const useCached = hasContent(cachedContent);
     const content = useCached ? cachedContent : quotedContent;
+    const source = useCached ? 'cache' : 'quote';
+    const quotedInfo = describeContent(quotedMsg);
+    const cachedInfo = cachedMessage ? describeContent(cachedMessage.message) : null;
 
     const image = content?.imageMessage ?? undefined;
     const video = content?.videoMessage ?? undefined;
@@ -95,8 +136,11 @@ export class VerCommand extends Command {
             : undefined;
     if (!kind) {
       logger.warn('[VerCommand] contenido no reenviable', {
-        keys: Object.keys(content ?? {}),
-        cached: Boolean(cachedMessage),
+        id: quotedMsgId,
+        chat: ctx.chat.jid,
+        source,
+        quoted: quotedInfo,
+        cached: cachedInfo,
       });
       await ctx.reply('❌ El mensaje citado no es una imagen, video, audio o texto.');
       return;
@@ -113,6 +157,14 @@ export class VerCommand extends Command {
       }
 
       if (!content) throw new Error('NO_CONTENT');
+      logger.info('[VerCommand] reenviando', {
+        id: quotedMsgId,
+        chat: ctx.chat.jid,
+        kind,
+        source,
+        quoted: quotedInfo,
+        cached: cachedInfo,
+      });
       const mediaBuffer = await this.download(
         ctx,
         quotedMsgId,
@@ -141,9 +193,25 @@ export class VerCommand extends Command {
 
       await ctx.react('✅');
     } catch (error) {
-      logger.error('[VerCommand] Error:', error);
+      logger.error('[VerCommand] fallo al reenviar', {
+        id: quotedMsgId,
+        chat: ctx.chat.jid,
+        kind,
+        source,
+        quoted: quotedInfo,
+        cached: cachedInfo,
+        error: describeError(error),
+      });
       await ctx.react('❌');
-      await ctx.reply('❌ No se pudo reenviar el contenido.');
+
+      // A quote without url/directPath can only be downloaded from the cache.
+      const unavailable = source === 'quote' && !quotedInfo.url && !quotedInfo.directPath;
+      await ctx.reply(
+        unavailable
+          ? '❌ No pude descargarlo: el mensaje original ya no está en caché.\n\n' +
+              'Prueba con `!ver` justo después de recibirlo.'
+          : '❌ No se pudo reenviar el contenido.',
+      );
     }
   }
 }

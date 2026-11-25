@@ -11,6 +11,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { downloadMediaMessage } from 'baileys';
 import { VerCommand } from '@/commands/utility/media/VerCommand.js';
 import { mediaMessageCache } from '@/services/media/MediaMessageCache.js';
+import { logger } from '@/utils/logger.js';
 import type { MessageContext } from '@/types/index.js';
 
 vi.mock('baileys', async importOriginal => {
@@ -20,6 +21,10 @@ vi.mock('baileys', async importOriginal => {
 
 vi.mock('@/services/media/MediaMessageCache.js', () => ({
   mediaMessageCache: { get: vi.fn() },
+}));
+
+vi.mock('@/utils/logger.js', () => ({
+  logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 
 const mockedDownload = downloadMediaMessage as ReturnType<typeof vi.fn>;
@@ -113,6 +118,32 @@ describe('VerCommand', () => {
 
     expect(sent(ctx)).toEqual(['chat@g.us', { text: 'secreto' }]);
     expect(mockedDownload).not.toHaveBeenCalled();
+  });
+
+  it('logs the full failure detail when the download throws', async () => {
+    mockedDownload.mockRejectedValue(
+      Object.assign(new Error('No valid media URL or directPath present in message'), {
+        statusCode: 400,
+      }),
+    );
+    const ctx = createCtx({ videoMessage: { mediaKey: Buffer.from('k') } });
+
+    await new VerCommand().execute(ctx);
+
+    expect(logger.error).toHaveBeenCalledWith(
+      '[VerCommand] fallo al reenviar',
+      expect.objectContaining({
+        id: 'quoted1',
+        kind: 'video',
+        source: 'quote',
+        cached: null,
+        error: expect.objectContaining({
+          message: 'No valid media URL or directPath present in message',
+          status: 400,
+        }),
+      }),
+    );
+    expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('caché');
   });
 
   it('asks for a quoted message when there is none', async () => {

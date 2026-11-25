@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.2] - 2026-11-25
+
+### Added
+
+- `!ver` now logs a structured diagnostic when it fails: cache hit/miss, which wrapper and inner keys arrived, whether the media carries `url`/`directPath`/`mediaKey`/`fileLength`, and the error's message, status and stack. Pino dropped the previous bare `Error` argument, which is why production only showed `[VerCommand] Error:`.
+
+### Changed
+
+- When the quoted stub has no `url`/`directPath` and the original is no longer cached, `!ver` explains that instead of a generic failure.
+
 ## [8.2.1] - 2026-11-25
 
 ### Fixed

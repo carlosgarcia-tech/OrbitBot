@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 # Single source of truth for the version: package.json (overridable as 2nd arg).
-PKG_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "8.2.1")
+PKG_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "8.2.2")
 NEON_GREEN='\033[38;5;82m'
 MATRIX='\033[38;5;46m'
 ELECTRIC='\033[38;5;51m'
