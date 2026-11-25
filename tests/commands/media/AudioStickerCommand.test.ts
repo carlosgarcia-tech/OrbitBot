@@ -189,6 +189,17 @@ describe('AudioStickerCommand', () => {
     expect(mocks.warn).toHaveBeenCalled();
   });
 
+  it('falls back when the native relay fails', async () => {
+    mocks.sendNative.mockRejectedValue(new Error('upload failed'));
+    const ctx = quotedVideoCtx();
+
+    await command.execute(ctx);
+
+    expect(mocks.sendFallback).toHaveBeenCalledTimes(1);
+    expect(ctx.react).toHaveBeenCalledWith('✅');
+    expect(ctx.react).not.toHaveBeenCalledWith('❌');
+  });
+
   it('reacts pending then success and brands only the sticker', async () => {
     const ctx = quotedVideoCtx();
 

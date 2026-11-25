@@ -83,7 +83,14 @@ export class AudioStickerCommand extends Command {
       );
 
       if (supportsAudioSticker()) {
-        await sendAudioSticker(ctx.sock, ctx.chat.jid, parts, ctx.message);
+        try {
+          await sendAudioSticker(ctx.sock, ctx.chat.jid, parts, ctx.message);
+        } catch (error) {
+          // A failed relay leaves the chat empty; deliver the two normal
+          // messages instead of making the user retry.
+          logError('[AudioStickerCommand] envío nativo falló, usando fallback', error);
+          await sendAudioStickerFallback(ctx.sock, ctx.chat.jid, parts);
+        }
       } else {
         logger.warn('[AudioStickerCommand] Baileys sin audioStickerMessage, usando fallback');
         await sendAudioStickerFallback(ctx.sock, ctx.chat.jid, parts);
