@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.3] - 2026-11-25
+
+### Fixed
+
+- The buffered logger passed `(message, meta)` straight to pino, which only reads fields from its first argument: every `logger.info/warn/error('text', { ... })` call was silently dropping its metadata. This is why `!ver` kept logging only `[VerCommand] fallo al reenviar` with no detail. Meta is now merged into one object and a bare `Error` is flattened (`name`, `message`, `stack`).
+
+### Added
+
+- `!ver` failures now include the ids of the messages cached for the chat (`cachedIds`), so a cache miss caused by an id/JID mismatch is visible.
+- The media cache logs each view-once message it stores, with the inner keys and whether it carries `url`/`directPath`, to confirm the original ever reached the cache.
+
 ## [8.2.2] - 2026-11-25
 
 ### Added

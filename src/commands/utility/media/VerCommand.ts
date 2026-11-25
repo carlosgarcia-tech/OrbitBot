@@ -119,6 +119,7 @@ export class VerCommand extends Command {
     const source = useCached ? 'cache' : 'quote';
     const quotedInfo = describeContent(quotedMsg);
     const cachedInfo = cachedMessage ? describeContent(cachedMessage.message) : null;
+    const cachedIds = () => mediaMessageCache.ids(ctx.chat.jid).slice(-10);
 
     const image = content?.imageMessage ?? undefined;
     const video = content?.videoMessage ?? undefined;
@@ -141,6 +142,7 @@ export class VerCommand extends Command {
         source,
         quoted: quotedInfo,
         cached: cachedInfo,
+        cachedIds: cachedIds(),
       });
       await ctx.reply('❌ El mensaje citado no es una imagen, video, audio o texto.');
       return;
@@ -200,6 +202,7 @@ export class VerCommand extends Command {
         source,
         quoted: quotedInfo,
         cached: cachedInfo,
+        cachedIds: cachedIds(),
         error: describeError(error),
       });
       await ctx.react('❌');

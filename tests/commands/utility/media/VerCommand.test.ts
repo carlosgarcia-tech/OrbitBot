@@ -20,7 +20,7 @@ vi.mock('baileys', async importOriginal => {
 });
 
 vi.mock('@/services/media/MediaMessageCache.js', () => ({
-  mediaMessageCache: { get: vi.fn() },
+  mediaMessageCache: { get: vi.fn(), ids: vi.fn().mockReturnValue([]) },
 }));
 
 vi.mock('@/utils/logger.js', () => ({

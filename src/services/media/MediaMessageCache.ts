@@ -18,7 +18,7 @@
  */
 
 import type { proto, WAMessage } from 'baileys';
-import { logError } from '@/utils/logger.js';
+import { logError, logger } from '@/utils/logger.js';
 
 /** One day of a busy group is hundreds of messages; 300 covers plenty of history. */
 const MAX_ENTRIES = 300;
@@ -70,6 +70,23 @@ export class MediaMessageCache {
       this.store.delete(key); // refresh insertion order
       this.store.set(key, message);
 
+      // View-once is the fragile case: confirm it reached the cache and with
+      // which media fields, so a later `!ver` miss can be explained.
+      const viewOnce = Boolean(
+        raw?.viewOnceMessage || raw?.viewOnceMessageV2 || raw?.viewOnceMessageV2Extension,
+      );
+      if (viewOnce) {
+        const media =
+          content?.imageMessage ?? content?.videoMessage ?? content?.audioMessage ?? undefined;
+        logger.info('[MediaMessageCache] view-once guardado', {
+          id,
+          chat: remoteJid,
+          keys: content ? Object.keys(content) : [],
+          url: Boolean(media?.url),
+          directPath: Boolean(media?.directPath),
+        });
+      }
+
       while (this.store.size > MAX_ENTRIES) {
         const oldest = this.store.keys().next().value;
         if (oldest === undefined) break;
@@ -96,6 +113,14 @@ export class MediaMessageCache {
 
   clear(): void {
     this.store.clear();
+  }
+
+  /** Cached message ids for a chat, oldest first. Diagnostics only. */
+  ids(remoteJid: string): string[] {
+    const prefix = `${remoteJid}:`;
+    return [...this.store.keys()]
+      .filter(key => key.startsWith(prefix))
+      .map(key => key.slice(prefix.length));
   }
 }
 

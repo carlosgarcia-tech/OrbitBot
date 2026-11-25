@@ -309,7 +309,7 @@ class AsyncLogger {
 
   /** Queues an entry and (re)arms the batch timer. */
   private schedule(level: string, ...args: unknown[]): void {
-    this.queue.push({ level, args });
+    this.queue.push({ level, args: AsyncLogger.toArgs(args) });
 
     if (!this.processTimer) {
       this.processTimer = setTimeout(() => {
@@ -317,6 +317,26 @@ class AsyncLogger {
         void this.processQueue();
       }, 100);
     }
+  }
+
+  /**
+   * pino only reads fields from an object in the FIRST argument, so
+   * `logger.info('msg', { meta })` used to drop the meta. Merge it into one
+   * object and flatten errors (pino does not serialise them on its own).
+   */
+  private static toArgs(args: unknown[]): unknown[] {
+    const [message, meta, ...rest] = args;
+    if (rest.length > 0 || meta === undefined || typeof message !== 'string') return args;
+
+    if (meta instanceof Error) {
+      return [
+        { msg: message, error: { name: meta.name, message: meta.message, stack: meta.stack } },
+      ];
+    }
+    if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+      return [{ ...(meta as Record<string, unknown>), msg: message }];
+    }
+    return args;
   }
 
   info(...args: unknown[]): void {
