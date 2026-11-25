@@ -58,17 +58,19 @@ Runner: **vitest**.
 | `StickerService.audio.test.ts` (ffmpeg real) | **12/12** |
 | `AudioStickerSender.test.ts` (incluye bytes 134/26) | **6/6** |
 | `AudioStickerCommand.test.ts` | **9/9** |
+| `StickerService.fill.test.ts` (dimensiones) | **3/3** |
 | `MediaMessageCache.test.ts` | **4/4** |
 | `tsc --noEmit` | sin errores |
 | ESLint/Prettier de los archivos tocados | limpios |
 
 Cubierto:
 - video con audio → webp animado + opus + `seconds`/`waveform`; video mudo → `NO_AUDIO`.
-- un clip de 25 s conserva >20 s de animación (no se corta a 10 s) si cabe en el presupuesto.
+- un clip de 25 s conserva >15 s de animación (no se corta a 10 s) si cabe en el presupuesto.
 - imagen sola → `NO_AUDIO`; imagen + audio → sticker estático.
 - video mudo + mp3 → OK; audio de 65 s recortado a ≤30 s; `maxSeconds: 5`.
 - un clip de 9 s con mucha calidad y detalle se recorta y baja de calidad en vez de fallar, y cabe en 1 MB.
 - audio basura → error sin temporales; sticker+audio < 1 MB.
+- stickers horizontales: recorte máximo del 15% por el lado largo, fondo desenfocado para llenar el cuadro y sin ampliar imágenes pequeñas (`StickerService.fill.test.ts`).
 - sin archivos `as-*` huérfanos tras éxito o error.
 - envío: una sola llamada a `relayMessage`, `messageSecret` de 32 bytes, `type="text"`, contexto citado y `expiration` de chats temporales.
 - fallback: sticker y luego nota de voz; propaga errores.

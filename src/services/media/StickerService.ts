@@ -54,6 +54,8 @@ interface FileTypeModule {
 export class StickerService {
   private static readonly TEMP_DIR = './data/temp';
   private static readonly STICKER_SIZE = 512;
+  /** Most a sticker may lose off its long side when fitting the square. */
+  private static readonly CROP_LIMIT = 0.15;
   /** WhatsApp rejects animated stickers above ~500KB. */
   private static readonly MAX_VIDEO_STICKER_BYTES = 450 * 1024;
   /**
@@ -339,13 +341,33 @@ export class StickerService {
   }
 
   private ffmpegImageProcess(input: string, output: string): Promise<void> {
-    // Cover, not contain: fill the square and crop the overflow, so the
-    // subject is not shrunk into transparent side/top padding.
+    // A sticker is square, but cropping a wide source to cover lost almost
+    // half of it. Crop at most 15% off the long side and fill the rest with a
+    // blurred copy, so wide and square sources both read well. Small images
+    // are not upscaled past their own resolution.
+    const size = StickerService.STICKER_SIZE;
+    const fg =
+      `crop=w='if(gt(iw,ih),iw*${1 - StickerService.CROP_LIMIT},iw)'` +
+      `:h='if(gt(ih,iw),ih*${1 - StickerService.CROP_LIMIT},ih)':x='(iw-ow)/2':y='(ih-oh)/2',` +
+      `scale='min(${size},iw)':'min(${size},ih)':flags=lanczos:force_original_aspect_ratio=decrease`;
     const filter =
-      'scale=512:512:flags=lanczos:force_original_aspect_ratio=increase,' +
-      'crop=512:512,format=rgba,setsar=1';
+      `[0:v]scale=${size}:${size}:flags=lanczos:force_original_aspect_ratio=increase,` +
+      `crop=${size}:${size},gblur=sigma=20[bg];` +
+      `[0:v]${fg}[fg];` +
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2,format=rgba,setsar=1`;
 
-    const args = ['-y', '-i', input, '-vf', filter, '-f', 'webp', '-quality', '100', output];
+    const args = [
+      '-y',
+      '-i',
+      input,
+      '-filter_complex',
+      filter,
+      '-f',
+      'webp',
+      '-quality',
+      '100',
+      output,
+    ];
 
     return new Promise((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', args);
@@ -456,10 +478,20 @@ export class StickerService {
     qscale = 75,
     seconds = 10,
   ): Promise<void> {
-    // Cover the whole square; a contain fit used to leave transparent bars.
+    // Same square fill as images: crop the long side by at most 15% and pad
+    // with a cheap blurred copy (downscale, blur, upscale) to keep it fast.
+    const size = 320;
+    const fg =
+      `crop=w='if(gt(iw,ih),iw*${1 - StickerService.CROP_LIMIT},iw)'` +
+      `:h='if(gt(ih,iw),ih*${1 - StickerService.CROP_LIMIT},ih)':x='(iw-ow)/2':y='(ih-oh)/2',` +
+      `scale='min(${size},iw)':'min(${size},ih)':force_original_aspect_ratio=decrease`;
     const filter =
-      `scale=320:320:force_original_aspect_ratio=increase,crop=320:320,fps=${fps}` +
-      ',split [a][b]; [a] palettegen=reserve_transparent=on:transparency_color=ffffff [p]; [b][p] paletteuse';
+      `[0:v]fps=${fps},split[bg0][fg0];` +
+      `[bg0]scale=${size}:${size}:force_original_aspect_ratio=increase,crop=${size}:${size},` +
+      `scale=40:40,gblur=sigma=6,scale=${size}:${size}:flags=bilinear[bg];` +
+      `[fg0]${fg}[fg];` +
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2,split [a][b]; ` +
+      `[a] palettegen=reserve_transparent=on:transparency_color=ffffff [p]; [b][p] paletteuse`;
 
     // Input-side cut: palettegen otherwise swallows the WHOLE video
     // building its palette, so long videos blew the command timeout.
@@ -468,7 +500,7 @@ export class StickerService {
     const args = [
       '-y',
       ...inputs,
-      '-vf',
+      '-filter_complex',
       filter,
       '-vcodec',
       'libwebp',
