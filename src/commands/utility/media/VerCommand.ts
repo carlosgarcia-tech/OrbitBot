@@ -120,6 +120,11 @@ export class VerCommand extends Command {
     const quotedInfo = describeContent(quotedMsg);
     const cachedInfo = cachedMessage ? describeContent(cachedMessage.message) : null;
     const cachedIds = () => mediaMessageCache.ids(ctx.chat.jid).slice(-10);
+    const cacheInfo = () => ({
+      cachedIds: cachedIds(),
+      cacheSize: mediaMessageCache.size,
+      uptimeSeconds: Math.round(process.uptime()),
+    });
 
     const image = content?.imageMessage ?? undefined;
     const video = content?.videoMessage ?? undefined;
@@ -142,7 +147,7 @@ export class VerCommand extends Command {
         source,
         quoted: quotedInfo,
         cached: cachedInfo,
-        cachedIds: cachedIds(),
+        ...cacheInfo(),
       });
       await ctx.reply('❌ El mensaje citado no es una imagen, video, audio o texto.');
       return;
@@ -202,7 +207,7 @@ export class VerCommand extends Command {
         source,
         quoted: quotedInfo,
         cached: cachedInfo,
-        cachedIds: cachedIds(),
+        ...cacheInfo(),
         error: describeError(error),
       });
       await ctx.react('❌');
@@ -211,8 +216,8 @@ export class VerCommand extends Command {
       const unavailable = source === 'quote' && !quotedInfo.url && !quotedInfo.directPath;
       await ctx.reply(
         unavailable
-          ? '❌ No pude descargarlo: el mensaje original ya no está en caché.\n\n' +
-              'Prueba con `!ver` justo después de recibirlo.'
+          ? '❌ Ese contenido ya no se puede descargar: no está en la caché del bot.\n\n' +
+              'Envía el contenido de una sola vez con el bot encendido y usa `!ver` sin reiniciarlo.'
           : '❌ No se pudo reenviar el contenido.',
       );
     }

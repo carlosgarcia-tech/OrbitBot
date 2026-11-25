@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.4] - 2026-11-25
+
+### Changed
+
+- `!ver` failure logs now include `cacheSize` and `uptimeSeconds`, so an empty `cachedIds` can be traced to a bot restart instead of a lookup bug.
+- The "original not in cache" reply now says exactly that and asks for a fresh view-once with the bot already running, instead of implying a download error.
+
 ## [8.2.3] - 2026-11-25
 
 ### Fixed

@@ -50,6 +50,14 @@ describe('MediaMessageCache', () => {
     expect(mediaMessageCache.get('123@s.whatsapp.net', 'LID1')).toBe(msg);
   });
 
+  it('reports the cached ids and size for a chat', () => {
+    mediaMessageCache.put(makeMsg('A1', 'group@g.us') as never);
+    mediaMessageCache.put(makeMsg('A2', 'group@g.us') as never);
+
+    expect(mediaMessageCache.ids('group@g.us')).toEqual(['A1', 'A2']);
+    expect(mediaMessageCache.size).toBe(2);
+  });
+
   it('evicts the oldest entries beyond the cap', () => {
     const cap = mediaMessageCache.maxSize;
     for (let i = 0; i <= cap; i++) {

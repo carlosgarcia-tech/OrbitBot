@@ -115,6 +115,11 @@ export class MediaMessageCache {
     this.store.clear();
   }
 
+  /** Number of cached entries. Diagnostics only. */
+  get size(): number {
+    return this.store.size;
+  }
+
   /** Cached message ids for a chat, oldest first. Diagnostics only. */
   ids(remoteJid: string): string[] {
     const prefix = `${remoteJid}:`;
