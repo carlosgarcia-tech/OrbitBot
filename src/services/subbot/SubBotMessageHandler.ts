@@ -21,6 +21,7 @@ import { handleMention } from '@/handlers/AiMentionHandler.js';
 import { welcomeService } from '@/services/system/WelcomeService.js';
 import { antiArabService } from '@/services/moderation/AntiArabService.js';
 import { ORBIT_TOGGLE_COMMANDS } from '@/config/index.js';
+import { mediaMessageCache } from '@/services/media/MediaMessageCache.js';
 import { CommandExecutionError } from '@/utils/errors.js';
 import { logger, logError } from '@/utils/logger.js';
 import type { IMiddleware } from '@/types/index.js';
@@ -64,6 +65,10 @@ export class SubBotMessageHandler {
     }
 
     const startTime = Date.now();
+
+    // Quoted-media commands (sticker, !wm…) need the original message:
+    // contextInfo stubs arrive without the CDN url.
+    mediaMessageCache.put(msg);
 
     try {
       if (msg.message?.reactionMessage) {

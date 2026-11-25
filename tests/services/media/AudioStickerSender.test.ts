@@ -207,4 +207,44 @@ describe('AudioStickerSender', () => {
       'upload failed',
     );
   });
+
+  it('decodes the audio track back out of the wire format', async () => {
+    const sock = fakeSock();
+    await sendAudioSticker(sock, 'chat@g.us', parts);
+    const content = (sock as never as { relayMessage: ReturnType<typeof vi.fn> }).relayMessage.mock
+      .calls[0][1] as proto.IMessage;
+
+    const decoded = proto.Message.decode(proto.Message.encode(content).finish()) as {
+      audioStickerMessage?: {
+        message?: { stickerMessage?: { audioMessage?: { url?: string; seconds?: number } } };
+      };
+    };
+
+    const sticker = decoded.audioStickerMessage?.message?.stickerMessage;
+    expect(sticker?.audioMessage?.url).toBe('audio-url');
+    expect(sticker?.audioMessage?.seconds).toBe(3);
+  });
+
+  it('decodes the audio track of a direct sticker message', () => {
+    const content = {
+      stickerMessage: {
+        url: 'sticker-url',
+        width: 512,
+        height: 512,
+        audioMessage: {
+          url: 'audio-url',
+          mimetype: 'audio/ogg; codecs=opus',
+          ptt: true,
+          seconds: 4,
+        },
+      },
+    } as unknown as proto.IMessage;
+
+    const decoded = proto.Message.decode(proto.Message.encode(content).finish()) as {
+      stickerMessage?: { audioMessage?: { url?: string; seconds?: number } };
+    };
+
+    expect(decoded.stickerMessage?.audioMessage?.url).toBe('audio-url');
+    expect(decoded.stickerMessage?.audioMessage?.seconds).toBe(4);
+  });
 });

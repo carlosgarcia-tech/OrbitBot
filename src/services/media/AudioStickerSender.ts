@@ -29,6 +29,8 @@ import type { AudioStickerParts } from '@/services/media/StickerService.js';
 
 const AUDIO_STICKER_FIELD = 134;
 const STICKER_AUDIO_FIELD = 26;
+/** `Message.stickerMessage` uses field 26 too; nested levels keep them apart. */
+const STICKER_MESSAGE_FIELD = 26;
 
 interface ProtoWriter {
   uint32(value: number): ProtoWriter;
@@ -39,6 +41,127 @@ interface ProtoWriter {
 type Encoder = (message: Record<string, unknown>, writer?: ProtoWriter) => ProtoWriter;
 type PatchableEncoder = Encoder & { __orbitAudioStickerPatched?: boolean };
 type ProtoType = { encode: (message: unknown, writer: ProtoWriter) => ProtoWriter };
+
+type Decoder = (input: unknown, length?: number, end?: number) => proto.IMessage;
+type PatchableDecoder = Decoder & { __orbitAudioStickerPatched?: boolean };
+
+interface StickerWithAudio extends proto.Message.IStickerMessage {
+  audioMessage?: proto.Message.IAudioMessage | null;
+}
+
+interface MessageWithAudioSticker extends proto.IMessage {
+  audioStickerMessage?: { message?: proto.IMessage | null } | null;
+}
+
+/**
+ * Real WhatsApp messages exceed this Baileys' generated protos: the fields
+ * below are skipped by the generated decoders, so an inbound audio sticker
+ * (or a quote of one) loses its track before any command sees it.
+ */
+function readVarint(buf: Uint8Array, start: number): [number, number] {
+  let value = 0;
+  let shift = 0;
+  let pos = start;
+  let byte: number;
+  do {
+    byte = buf[pos++];
+    value += (byte & 0x7f) * 2 ** shift;
+    shift += 7;
+  } while (byte & 0x80);
+  return [value, pos];
+}
+
+/** Raw values of every length-delimited `field` in an encoded message. */
+function lengthDelimited(buf: Uint8Array, field: number): Uint8Array[] {
+  const found: Uint8Array[] = [];
+  let pos = 0;
+  while (pos < buf.length) {
+    const [tag, afterTag] = readVarint(buf, pos);
+    const wire = tag & 7;
+    pos = afterTag;
+    if (wire === 0) {
+      pos = readVarint(buf, pos)[1];
+    } else if (wire === 1) {
+      pos += 8;
+    } else if (wire === 2) {
+      const [length, afterLength] = readVarint(buf, pos);
+      pos = afterLength;
+      if (tag >>> 3 === field) found.push(buf.subarray(pos, pos + length));
+      pos += length;
+    } else if (wire === 5) {
+      pos += 4;
+    } else {
+      break; // groups do not appear in WhatsApp messages
+    }
+  }
+  return found;
+}
+
+function decodeStickerAudio(stickerBytes: Uint8Array): proto.Message.IAudioMessage | undefined {
+  const bytes = lengthDelimited(stickerBytes, STICKER_AUDIO_FIELD)[0];
+  return bytes ? proto.Message.AudioMessage.decode(bytes) : undefined;
+}
+
+/** Restores field 26/134 into an already-decoded message. */
+function restoreAudioSticker(message: proto.IMessage, raw: Uint8Array): void {
+  const wrapped = message as MessageWithAudioSticker;
+  const wrapper = lengthDelimited(raw, AUDIO_STICKER_FIELD)[0];
+
+  if (wrapper) {
+    if (wrapped.audioStickerMessage) return;
+    const inner = lengthDelimited(wrapper, 1)[0];
+    const stickerBytes = inner && lengthDelimited(inner, STICKER_MESSAGE_FIELD)[0];
+    if (!stickerBytes) return;
+
+    const sticker = proto.Message.StickerMessage.decode(stickerBytes) as StickerWithAudio;
+    const audio = decodeStickerAudio(stickerBytes);
+    if (audio) sticker.audioMessage = audio;
+    wrapped.audioStickerMessage = { message: { stickerMessage: sticker } };
+    return;
+  }
+
+  if (!message.stickerMessage) return;
+  const stickerBytes = lengthDelimited(raw, STICKER_MESSAGE_FIELD)[0];
+  const audio = stickerBytes ? decodeStickerAudio(stickerBytes) : undefined;
+  if (audio) (message.stickerMessage as StickerWithAudio).audioMessage = audio;
+}
+
+/** Wraps a generated decoder, attaching what its switch skipped. */
+function patchDecode(target: { decode: Decoder }): void {
+  const original = target.decode as PatchableDecoder;
+  if (original.__orbitAudioStickerPatched) return;
+
+  const patched: PatchableDecoder = (input, length, end) => {
+    let raw: Uint8Array | undefined;
+    try {
+      if (
+        input &&
+        typeof input === 'object' &&
+        typeof (input as { pos?: unknown }).pos === 'number'
+      ) {
+        const reader = input as { pos: number; len: number; buf: Uint8Array };
+        const stop = length === undefined ? reader.len : Math.min(reader.len, reader.pos + length);
+        raw = reader.buf.subarray(reader.pos, stop);
+      } else if (input instanceof Uint8Array) {
+        raw = input;
+      }
+    } catch {
+      raw = undefined;
+    }
+
+    const message = original.call(target, input, length, end);
+    if (raw) {
+      try {
+        restoreAudioSticker(message, raw);
+      } catch (error) {
+        logError('[AudioStickerSender] No pude recuperar el audio del sticker', error);
+      }
+    }
+    return message;
+  };
+  patched.__orbitAudioStickerPatched = true;
+  target.decode = patched;
+}
 
 /** Appends a length-delimited field the generated encoder does not know. */
 function patchField(
@@ -88,6 +211,7 @@ function installProtoPatch(): boolean {
         proto.Message.AudioMessage as unknown as ProtoType,
       );
     }
+    patchDecode(messageType as unknown as { decode: Decoder });
     patchOk = true;
   } catch (error) {
     logError('[AudioStickerSender] No pude extender el proto de Baileys', error);
@@ -171,3 +295,7 @@ export async function sendAudioStickerFallback(
     ptt: true,
   });
 }
+
+// Decoding must be patched at boot: `!wm` and the media cache rely on inbound
+// audio stickers carrying their track, not only when `!saudio` runs.
+installProtoPatch();

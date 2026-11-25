@@ -37,7 +37,9 @@ export class MediaMessageCache {
         message.message?.imageMessage ||
         message.message?.videoMessage ||
         message.message?.stickerMessage ||
-        message.message?.audioMessage;
+        message.message?.audioMessage ||
+        (message.message as { audioStickerMessage?: { message?: { stickerMessage?: unknown } } })
+          ?.audioStickerMessage?.message?.stickerMessage;
       if (!hasMedia) return;
 
       const key = `${remoteJid}:${id}`;

@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.1.0] - 2026-11-25
+
+### Added
+
+- `!wm` / `!take` keeps audio stickers' sound: the renamed sticker is re-sent as an audio sticker with its original track, duration, waveform and dimensions (with the two-message fallback when the native relay fails).
+
+### Fixed
+
+- Baileys' generated protos drop the audio-sticker fields (26 inside `StickerMessage`, 134 wrapping it), so inbound audio stickers and replies quoting them lost their track before any command ran. The decoders now restore both fields, and the quoted-media cache recognises the wrapper.
+
 ## [8.0.1] - 2026-11-25
 
 ### Changed
