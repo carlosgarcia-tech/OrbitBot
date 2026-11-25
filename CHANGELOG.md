@@ -5,6 +5,17 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.0] - 2026-11-25
+
+### Added
+
+- `!ver` (`!img`, `!reenviar`) re-sends images, videos, voice notes/audio and text, including view-once content (`viewOnceMessage`, `viewOnceMessageV2`, `viewOnceMessageV2Extension`).
+- The quoted-media cache now stores view-once and disappearing-message envelopes, so their CDN url survives and the content can be re-sent.
+
+### Fixed
+
+- `!ver` always downloaded quoted content as an `imageMessage`, so quoted videos failed with a download error. It now picks the real media type and the original cached message instead of the url-less quote stub.
+
 ## [8.1.0] - 2026-11-25
 
 ### Added

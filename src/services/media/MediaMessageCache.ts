@@ -17,29 +17,53 @@
  * @created 2026-11-17
  */
 
-import type { WAMessage } from 'baileys';
+import type { proto, WAMessage } from 'baileys';
 import { logError } from '@/utils/logger.js';
 
 /** One day of a busy group is hundreds of messages; 300 covers plenty of history. */
 const MAX_ENTRIES = 300;
 
+/** Unwraps ephemeral/view-once envelopes (they can nest). */
+function unwrapMessage(message?: proto.IMessage | null): proto.IMessage | undefined {
+  let content = message ?? undefined;
+  for (let depth = 0; depth < 3; depth++) {
+    const inner =
+      content?.ephemeralMessage?.message ??
+      content?.viewOnceMessage?.message ??
+      content?.viewOnceMessageV2?.message ??
+      content?.viewOnceMessageV2Extension?.message;
+    if (!inner) break;
+    content = inner;
+  }
+  return content;
+}
+
 export class MediaMessageCache {
   readonly maxSize = MAX_ENTRIES;
   private readonly store = new Map<string, WAMessage>();
 
-  /** Caches the message when it carries image/video/sticker/audio media. Best-effort. */
+  /**
+   * Caches media and view-once messages (text included). Best-effort.
+   * View-once content is wrapped, so the type is checked after normalising.
+   */
   put(message: WAMessage): void {
     try {
       const id = message.key?.id;
       const remoteJid = message.key?.remoteJid;
       if (!id || !remoteJid) return;
+
+      const raw = message.message;
+      const content = unwrapMessage(raw);
+      const isWrapped = content !== raw;
       const hasMedia =
-        message.message?.imageMessage ||
-        message.message?.videoMessage ||
-        message.message?.stickerMessage ||
-        message.message?.audioMessage ||
-        (message.message as { audioStickerMessage?: { message?: { stickerMessage?: unknown } } })
-          ?.audioStickerMessage?.message?.stickerMessage;
+        Boolean(
+          content?.imageMessage ||
+          content?.videoMessage ||
+          content?.stickerMessage ||
+          content?.audioMessage ||
+          (message.message as { audioStickerMessage?: { message?: { stickerMessage?: unknown } } })
+            ?.audioStickerMessage?.message?.stickerMessage,
+        ) || isWrapped;
       if (!hasMedia) return;
 
       const key = `${remoteJid}:${id}`;
