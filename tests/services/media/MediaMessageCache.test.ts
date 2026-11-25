@@ -43,6 +43,13 @@ describe('MediaMessageCache', () => {
     expect(mediaMessageCache.get('group@g.us', 'AUD')).toBe(audio);
   });
 
+  it('resolves by id when the chat is addressed with another JID form', () => {
+    const msg = makeMsg('LID1', '123@lid');
+    mediaMessageCache.put(msg as never);
+
+    expect(mediaMessageCache.get('123@s.whatsapp.net', 'LID1')).toBe(msg);
+  });
+
   it('evicts the oldest entries beyond the cap', () => {
     const cap = mediaMessageCache.maxSize;
     for (let i = 0; i <= cap; i++) {

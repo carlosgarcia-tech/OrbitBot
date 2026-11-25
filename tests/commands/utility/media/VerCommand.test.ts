@@ -67,6 +67,22 @@ describe('VerCommand', () => {
     expect(sent(ctx)).toEqual(['chat@g.us', { image: Buffer.from('media') }]);
   });
 
+  it('re-sends a view-once video cached with only a directPath', async () => {
+    mockedCache.mockReturnValue({
+      key: { id: 'quoted1', remoteJid: 'chat@g.us' },
+      message: {
+        viewOnceMessageV2: {
+          message: { videoMessage: { directPath: '/v/t62.7118-24', mediaKey: Buffer.from('k') } },
+        },
+      },
+    });
+    const ctx = createCtx({ viewOnceMessageV2: { message: { videoMessage: {} } } });
+
+    await new VerCommand().execute(ctx);
+
+    expect(sent(ctx)).toEqual(['chat@g.us', { video: Buffer.from('media') }]);
+  });
+
   it('re-sends a view-once voice note', async () => {
     mockedCache.mockReturnValue({
       key: { id: 'quoted1', remoteJid: 'chat@g.us' },

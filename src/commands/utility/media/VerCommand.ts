@@ -19,25 +19,16 @@ import { mediaMessageCache } from '@/services/media/MediaMessageCache.js';
 
 type MediaKind = 'image' | 'video' | 'audio';
 
-interface MediaStub {
-  url?: string | null;
-}
-
 /** Text of a plain or view-once wrapper (already normalised). */
-function viewOnceText(content?: proto.IMessage | null): string | undefined {
+function textOf(content?: proto.IMessage | null): string | undefined {
   return content?.extendedTextMessage?.text || content?.conversation || undefined;
 }
 
-/** Cached media wins when it still carries the CDN url. */
-function pickMedia<T extends MediaStub>(
-  cached: T | null | undefined,
-  quoted: T | null | undefined,
-): T | undefined {
-  const original = cached ?? undefined;
-  const stub = quoted ?? undefined;
-  if (original?.url) return original;
-  if (stub?.url) return stub;
-  return undefined;
+/** True when the normalised content has something worth re-sending. */
+function hasContent(content?: proto.IMessage | null): boolean {
+  return Boolean(
+    content?.imageMessage || content?.videoMessage || content?.audioMessage || textOf(content),
+  );
 }
 
 /** Command handler for `!ver`: re-sends the quoted message as a normal one. */
@@ -51,19 +42,12 @@ export class VerCommand extends Command {
   cooldown = 5000;
   contexts = [CommandContext.BOTH];
 
+  /** Downloads the given message; Baileys unwraps view-once on its own. */
   private async download(
     ctx: MessageContext,
     quotedMsgId: string,
-    kind: MediaKind,
-    media: proto.Message.IImageMessage | proto.Message.IVideoMessage | proto.Message.IAudioMessage,
+    message: proto.IMessage,
   ): Promise<Buffer> {
-    const message: proto.IMessage =
-      kind === 'image'
-        ? { imageMessage: media as proto.Message.IImageMessage }
-        : kind === 'video'
-          ? { videoMessage: media as proto.Message.IVideoMessage }
-          : { audioMessage: media as proto.Message.IAudioMessage };
-
     const messageToDownload: WAMessage = {
       key: { id: quotedMsgId, remoteJid: ctx.chat.jid, fromMe: false },
       message,
@@ -87,16 +71,18 @@ export class VerCommand extends Command {
       return;
     }
 
-    // Unwraps view-once/ephemeral wrappers; the cached original keeps the url.
+    // Unwraps view-once/ephemeral wrappers; the cached original keeps the
+    // media url/directPath, which the quote stub may have stripped.
     const quotedContent = normalizeMessageContent(quotedMsg);
     const cachedMessage = mediaMessageCache.get(ctx.chat.jid, quotedMsgId);
     const cachedContent = normalizeMessageContent(cachedMessage?.message);
+    const useCached = hasContent(cachedContent);
+    const content = useCached ? cachedContent : quotedContent;
 
-    /** Cached media wins when it still has the CDN url. */
-    const image = pickMedia(cachedContent?.imageMessage, quotedContent?.imageMessage);
-    const video = pickMedia(cachedContent?.videoMessage, quotedContent?.videoMessage);
-    const audio = pickMedia(cachedContent?.audioMessage, quotedContent?.audioMessage);
-    const text = viewOnceText(cachedContent) ?? viewOnceText(quotedContent);
+    const image = content?.imageMessage ?? undefined;
+    const video = content?.videoMessage ?? undefined;
+    const audio = content?.audioMessage ?? undefined;
+    const text = textOf(content);
 
     const kind: MediaKind | 'text' | undefined = image
       ? 'image'
@@ -108,6 +94,10 @@ export class VerCommand extends Command {
             ? 'text'
             : undefined;
     if (!kind) {
+      logger.warn('[VerCommand] contenido no reenviable', {
+        keys: Object.keys(content ?? {}),
+        cached: Boolean(cachedMessage),
+      });
       await ctx.reply('❌ El mensaje citado no es una imagen, video, audio o texto.');
       return;
     }
@@ -122,10 +112,12 @@ export class VerCommand extends Command {
         return;
       }
 
-      const media = kind === 'image' ? image : kind === 'video' ? video : audio;
-      if (!media) throw new Error('NO_MEDIA');
-
-      const mediaBuffer = await this.download(ctx, quotedMsgId, kind, media);
+      if (!content) throw new Error('NO_CONTENT');
+      const mediaBuffer = await this.download(
+        ctx,
+        quotedMsgId,
+        useCached ? (cachedMessage?.message ?? quotedMsg) : quotedMsg,
+      );
 
       if (kind === 'image') {
         const caption = image?.caption ?? undefined;

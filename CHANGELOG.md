@@ -5,6 +5,13 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.1] - 2026-11-25
+
+### Fixed
+
+- `!ver` rejected view-once videos whose cached copy had no CDN `url` (only `directPath`, which Baileys can still download). It now classifies by the media field itself and hands the whole original message — wrapper included — to `downloadMediaMessage`.
+- The quoted-media cache also resolves by message id when the chat is addressed with another JID form (PN ↔ LID), which made view-once lookups miss.
+
 ## [8.2.0] - 2026-11-25
 
 ### Added

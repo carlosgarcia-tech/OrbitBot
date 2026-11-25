@@ -82,8 +82,16 @@ export class MediaMessageCache {
 
   /** Original message for a quoted reference, or undefined when unknown. */
   get(remoteJid: string, messageId: string): WAMessage | undefined {
-    if (!remoteJid || !messageId) return undefined;
-    return this.store.get(`${remoteJid}:${messageId}`);
+    if (!messageId) return undefined;
+    if (remoteJid) {
+      const exact = this.store.get(`${remoteJid}:${messageId}`);
+      if (exact) return exact;
+    }
+    // The same chat can be addressed as PN, LID or group JID; ids are unique.
+    for (const message of this.store.values()) {
+      if (message.key?.id === messageId) return message;
+    }
+    return undefined;
   }
 
   clear(): void {
