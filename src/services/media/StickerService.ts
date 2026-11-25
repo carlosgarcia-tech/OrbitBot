@@ -383,8 +383,9 @@ export class StickerService {
 
   /**
    * Encodes a video sticker. `seconds` is the most it may run; `maxBytes` the
-   * size budget. Long clips keep a smooth frame rate, step quality down, and
-   * only then get shortened, because a low-fps sticker looks broken.
+   * size budget. A short probe estimates the size, so the clip gets encoded
+   * once or twice instead of at every quality rung, and only gets shortened
+   * when even the lowest quality does not fit.
    */
   async videoToSticker(
     buffer: Buffer,
@@ -403,36 +404,44 @@ export class StickerService {
 
     try {
       writeFileSync(tempInput, buffer);
-      const attempts =
-        seconds <= 10
-          ? [
-              { fps: 15, quality: 75 },
-              { fps: 12, quality: 50 },
-            ]
-          : seconds <= 15
-            ? [
-                { fps: 15, quality: 50 },
-                { fps: 12, quality: 30 },
-              ]
-            : // Longer clips start at 12 fps: a 15 fps pass over 20s is
-              // already too slow to be worth it.
-              [{ fps: 12, quality: 30 }];
 
-      let result: Buffer = Buffer.alloc(0);
-      for (const { fps, quality } of attempts) {
-        result = await encode(fps, quality, seconds);
-        if (result.length <= maxBytes) return result;
+      // Encoding the whole clip at each rung made detailed videos take over a
+      // minute. A 2s probe predicts the full size close enough to pick one.
+      const probeSeconds = Math.min(2, seconds);
+      const probe = await encode(15, 70, probeSeconds);
+      const rate = probe.length / probeSeconds;
+
+      // q45 is ~0.65 of q70 and q20 ~0.38 on detailed footage; when even that
+      // does not fit, shorten the clip instead of spending another pass.
+      let fps = 15;
+      let quality = 70;
+      let length = seconds;
+      if (rate * seconds > maxBytes) {
+        if (rate * 0.65 * seconds <= maxBytes) {
+          quality = 45;
+        } else if (rate * 0.38 * seconds <= maxBytes) {
+          fps = 12;
+          quality = 25;
+        } else {
+          fps = 12;
+          quality = 20;
+          length = Math.min(seconds, Math.max(2, Math.floor((maxBytes / (rate * 0.38)) * 0.9)));
+        }
       }
 
-      // Still over budget: trim the clip at the same smooth 12 fps instead of
-      // dropping the frame rate further. Sizes are not linear, so re-measure.
-      let length = seconds;
+      let result =
+        length === probeSeconds && fps === 15 && quality === 70
+          ? probe
+          : await encode(fps, quality, length);
+
+      // Still over budget: shorten at the cheapest setting and re-measure,
+      // because encoded size does not scale linearly with duration.
       for (let attempt = 0; attempt < 2 && result.length > maxBytes; attempt++) {
-        const ratio = Math.min(0.9, (maxBytes / result.length) * 0.95);
-        const fitted = Math.max(10, Math.floor(length * ratio));
+        const ratio = Math.min(0.85, (maxBytes / result.length) * 0.9);
+        const fitted = Math.max(2, Math.floor(length * ratio));
         if (fitted >= length) break;
         length = fitted;
-        result = await encode(12, 30, length);
+        result = await encode(12, 20, length);
       }
       return result;
     } finally {

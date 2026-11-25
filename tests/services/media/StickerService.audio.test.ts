@@ -19,6 +19,7 @@ const TEMP_DIR = './data/temp';
 let dir: string;
 let withAudio: Buffer;
 let longVideo: Buffer;
+let heavyVideo: Buffer;
 let silent: Buffer;
 let image: Buffer;
 let shortAudio: Buffer;
@@ -82,6 +83,7 @@ beforeAll(() => {
   dir = mkdtempSync(join(tmpdir(), 'audio-sticker-'));
   const withAudioPath = join(dir, 'with-audio.mp4');
   const longVideoPath = join(dir, 'long-video.mp4');
+  const heavyVideoPath = join(dir, 'heavy-video.mp4');
   const silentPath = join(dir, 'silent.mp4');
   const imagePath = join(dir, 'image.png');
   const shortPath = join(dir, 'short.ogg');
@@ -124,6 +126,30 @@ beforeAll(() => {
     '-shortest',
     longVideoPath,
   ]);
+  // Heavy short clip: strong detail over the whole frame, so even the lowest
+  // quality pass is over budget and the clip must be shortened.
+  ff([
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc2=duration=9:size=640x360:rate=30',
+    '-f',
+    'lavfi',
+    '-i',
+    'sine=frequency=440:duration=9',
+    '-vf',
+    'noise=alls=80:allf=t',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    '-crf',
+    '18',
+    '-c:a',
+    'aac',
+    '-shortest',
+    heavyVideoPath,
+  ]);
   ff([
     '-f',
     'lavfi',
@@ -142,6 +168,7 @@ beforeAll(() => {
 
   withAudio = readFileSync(withAudioPath);
   longVideo = readFileSync(longVideoPath);
+  heavyVideo = readFileSync(heavyVideoPath);
   silent = readFileSync(silentPath);
   image = readFileSync(imagePath);
   shortAudio = readFileSync(shortPath);
@@ -181,6 +208,14 @@ describe('StickerService.createAudioSticker', () => {
     expect(parts.isAnimated).toBe(true);
     expect(await stickerSeconds(parts.sticker)).toBeGreaterThan(15);
   }, 60_000);
+
+  it('fits a heavy 9s video instead of failing', async () => {
+    const parts = await service.createAudioSticker({ visual: heavyVideo });
+
+    expect(parts.isAnimated).toBe(true);
+    expect(parts.sticker.length + parts.audio.length).toBeLessThanOrEqual(1024 * 1024);
+    expect(parts.seconds).toBeGreaterThanOrEqual(1);
+  }, 90_000);
 
   it('rejects a video without an audio track', async () => {
     await expect(service.createAudioSticker({ visual: silent })).rejects.toThrow('NO_AUDIO');
