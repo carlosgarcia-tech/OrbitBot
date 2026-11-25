@@ -29,6 +29,8 @@ let mp3Audio: Buffer;
 /** Runs ffmpeg and throws with stderr when it fails. */
 function ff(args: string[]): void {
   const result = spawnSync('ffmpeg', ['-y', '-hide_banner', '-loglevel', 'error', ...args]);
+  // A missing ffmpeg leaves stderr null, so report the spawn error itself.
+  if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr.toString());
 }
 

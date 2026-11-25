@@ -55,6 +55,7 @@ describe('StickerService fill', () => {
       'webm',
       'pipe:1',
     ]);
+    if (source.error) throw source.error;
     expect(source.status).toBe(0);
 
     const sticker = await service.videoToSticker(source.stdout);
