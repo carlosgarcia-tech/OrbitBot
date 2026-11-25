@@ -50,6 +50,26 @@ describe('MediaMessageCache', () => {
     expect(mediaMessageCache.get('123@s.whatsapp.net', 'LID1')).toBe(msg);
   });
 
+  it('remembers recent inbound messages, media or not, for diagnostics', () => {
+    mediaMessageCache.put({
+      key: { id: 'TXT1', remoteJid: 'group@g.us' },
+      message: { conversation: 'hola' },
+    } as never);
+    mediaMessageCache.put({
+      key: { id: 'VO1', remoteJid: 'group@g.us' },
+      message: {
+        viewOnceMessageV2: {
+          message: { videoMessage: { url: 'https://mmg.whatsapp.net/v' } },
+        },
+      },
+    } as never);
+
+    expect(mediaMessageCache.recent('group@g.us')).toMatchObject([
+      { id: 'TXT1', keys: ['conversation'], viewOnce: false },
+      { id: 'VO1', keys: ['viewOnceMessageV2'], contentKeys: ['videoMessage'], viewOnce: true },
+    ]);
+  });
+
   it('reports the cached ids and size for a chat', () => {
     mediaMessageCache.put(makeMsg('A1', 'group@g.us') as never);
     mediaMessageCache.put(makeMsg('A2', 'group@g.us') as never);

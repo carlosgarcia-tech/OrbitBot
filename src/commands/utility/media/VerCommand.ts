@@ -120,11 +120,16 @@ export class VerCommand extends Command {
     const quotedInfo = describeContent(quotedMsg);
     const cachedInfo = cachedMessage ? describeContent(cachedMessage.message) : null;
     const cachedIds = () => mediaMessageCache.ids(ctx.chat.jid).slice(-10);
-    const cacheInfo = () => ({
-      cachedIds: cachedIds(),
-      cacheSize: mediaMessageCache.size,
-      uptimeSeconds: Math.round(process.uptime()),
-    });
+    const cacheInfo = () => {
+      const scoped = mediaMessageCache.recent(ctx.chat.jid);
+      return {
+        cachedIds: cachedIds(),
+        cacheSize: mediaMessageCache.size,
+        uptimeSeconds: Math.round(process.uptime()),
+        recent: scoped,
+        recentAny: scoped.length > 0 ? undefined : mediaMessageCache.recent(''),
+      };
+    };
 
     const image = content?.imageMessage ?? undefined;
     const video = content?.videoMessage ?? undefined;
@@ -164,13 +169,15 @@ export class VerCommand extends Command {
       }
 
       if (!content) throw new Error('NO_CONTENT');
-      logger.info('[VerCommand] reenviando', {
+      // Warn level: Docker runs the bot with LOG_LEVEL=warn by default.
+      logger.warn('[VerCommand] reenviando', {
         id: quotedMsgId,
         chat: ctx.chat.jid,
         kind,
         source,
         quoted: quotedInfo,
         cached: cachedInfo,
+        ...cacheInfo(),
       });
       const mediaBuffer = await this.download(
         ctx,

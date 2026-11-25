@@ -240,10 +240,10 @@ OrbitBot/
 ### Quick start (script)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/carlosgarcia-tech/OrbitBot/main/OrbitBot.sh | bash -s v8.2.4
+curl -fsSL https://raw.githubusercontent.com/carlosgarcia-tech/OrbitBot/main/OrbitBot.sh | bash -s v8.2.5
 ```
 
-Installs Node.js, FFmpeg and other system dependencies, clones the repo, installs npm dependencies, applies the `whatsapp-rust-bridge` patch and creates a starter `.env`. Pass a version (`v8.2.4` in the example) to pin the install; without it, the script falls back to the latest published GitHub release. You'll still need to fill in your credentials in `.env` (see Configuration below).
+Installs Node.js, FFmpeg and other system dependencies, clones the repo, installs npm dependencies, applies the `whatsapp-rust-bridge` patch and creates a starter `.env`. Pass a version (`v8.2.5` in the example) to pin the install; without it, the script falls back to the latest published GitHub release. You'll still need to fill in your credentials in `.env` (see Configuration below).
 
 ### Termux (Android)
 

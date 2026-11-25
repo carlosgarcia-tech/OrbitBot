@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.5] - 2026-11-25
+
+### Fixed
+
+- `!ver` and media-cache diagnostics used `info`, but Docker starts the bot child with `LOG_LEVEL=warn`, so none of them reached `docker logs`. They are now warnings.
+
+### Added
+
+- The media cache remembers the last 20 inbound messages per process (id, keys, view-once flag). A `!ver` failure includes the recent ids for the chat, so it is visible whether the quoted message ever reached the bot at all.
+
 ## [8.2.4] - 2026-11-25
 
 ### Changed

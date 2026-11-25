@@ -41,6 +41,15 @@ function unwrapMessage(message?: proto.IMessage | null): proto.IMessage | undefi
 export class MediaMessageCache {
   readonly maxSize = MAX_ENTRIES;
   private readonly store = new Map<string, WAMessage>();
+  /** Last inbound messages (any kind), for failure diagnostics. */
+  private readonly seen: Array<{
+    id: string;
+    chat: string;
+    keys: string[];
+    contentKeys: string[];
+    viewOnce: boolean;
+    at: number;
+  }> = [];
 
   /**
    * Caches media and view-once messages (text included). Best-effort.
@@ -55,6 +64,20 @@ export class MediaMessageCache {
       const raw = message.message;
       const content = unwrapMessage(raw);
       const isWrapped = content !== raw;
+      const viewOnce = Boolean(
+        raw?.viewOnceMessage || raw?.viewOnceMessageV2 || raw?.viewOnceMessageV2Extension,
+      );
+
+      this.seen.push({
+        id,
+        chat: remoteJid,
+        keys: raw ? Object.keys(raw) : [],
+        contentKeys: content ? Object.keys(content) : [],
+        viewOnce,
+        at: Date.now(),
+      });
+      if (this.seen.length > 20) this.seen.shift();
+
       const hasMedia =
         Boolean(
           content?.imageMessage ||
@@ -71,14 +94,12 @@ export class MediaMessageCache {
       this.store.set(key, message);
 
       // View-once is the fragile case: confirm it reached the cache and with
-      // which media fields, so a later `!ver` miss can be explained.
-      const viewOnce = Boolean(
-        raw?.viewOnceMessage || raw?.viewOnceMessageV2 || raw?.viewOnceMessageV2Extension,
-      );
+      // which media fields. Warn level because Docker runs the bot with
+      // LOG_LEVEL=warn by default.
       if (viewOnce) {
         const media =
           content?.imageMessage ?? content?.videoMessage ?? content?.audioMessage ?? undefined;
-        logger.info('[MediaMessageCache] view-once guardado', {
+        logger.warn('[MediaMessageCache] view-once guardado', {
           id,
           chat: remoteJid,
           keys: content ? Object.keys(content) : [],
@@ -113,6 +134,7 @@ export class MediaMessageCache {
 
   clear(): void {
     this.store.clear();
+    this.seen.length = 0;
   }
 
   /** Number of cached entries. Diagnostics only. */
@@ -126,6 +148,29 @@ export class MediaMessageCache {
     return [...this.store.keys()]
       .filter(key => key.startsWith(prefix))
       .map(key => key.slice(prefix.length));
+  }
+
+  /**
+   * Last inbound messages seen for a chat (empty jid = any chat), newest last.
+   * Shows whether the quoted id ever reached the bot, even if it was not media.
+   */
+  recent(remoteJid: string): Array<{
+    id: string;
+    keys: string[];
+    contentKeys: string[];
+    viewOnce: boolean;
+    ageSeconds: number;
+  }> {
+    const now = Date.now();
+    return this.seen
+      .filter(item => !remoteJid || item.chat === remoteJid)
+      .map(({ id, keys, contentKeys, viewOnce, at }) => ({
+        id,
+        keys,
+        contentKeys,
+        viewOnce,
+        ageSeconds: Math.round((now - at) / 1000),
+      }));
   }
 }
 
