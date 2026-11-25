@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 # Single source of truth for the version: package.json (overridable as 2nd arg).
-PKG_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "7.1.3")
+PKG_VERSION=$(node -p "require('./package.json').version" 2>/dev/null || echo "8.0.0")
 NEON_GREEN='\033[38;5;82m'
 MATRIX='\033[38;5;46m'
 ELECTRIC='\033[38;5;51m'
@@ -37,7 +37,7 @@ if [[ "$RAW_MODE" == "" ]]; then
     update|--update|-u) RAW_MODE="$VERSION"; VERSION="$PKG_VERSION" ;;
   esac
 fi
-IMAGE="ghcr.io/carlosgarcia-tech/orbit:${VERSION}"
+IMAGE="ghcr.io/carlosgarcia-tech/orbitbot:${VERSION}"
 SOURCE_LABEL="build local"
 IMAGE_PROTO="IMAGE·BUILD"
 if [[ "$DEPLOY_ENV" == "production" ]]; then

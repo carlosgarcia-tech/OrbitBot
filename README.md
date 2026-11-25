@@ -1,14 +1,12 @@
 # OrbitBot
 
-A production-grade WhatsApp automation system built with TypeScript — featuring 300+ commands across 15 categories, 20 service modules, a middleware pipeline that every message traverses, multi-instance SubBot orchestration, and a test suite of ~1000 unit and end-to-end tests that run in CI.
+A production-grade WhatsApp automation system built with TypeScript — featuring 300+ commands across 15 categories, 20 service modules, a middleware pipeline that every message traverses, multi-instance SubBot orchestration, and a test suite of ~1300 unit and end-to-end tests that run in CI.
 
-[![CI](https://github.com/carlosgarcia-tech/VaniaBot/actions/workflows/ci.yml/badge.svg)](https://github.com/carlosgarcia-tech/VaniaBot/actions/workflows/ci.yml)
+[![CI](https://github.com/carlosgarcia-tech/OrbitBot/actions/workflows/ci.yml/badge.svg)](https://github.com/carlosgarcia-tech/OrbitBot/actions/workflows/ci.yml)
 [![Code coverage](https://codecov.io/gh/carlosgarcia-tech/OrbitBot/branch/main/graph/badge.svg)](https://codecov.io/gh/carlosgarcia-tech/OrbitBot)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5-007ACC?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-20+-43853D?style=flat-square&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-2DD4BF?style=flat-square)](LICENSE)
-
-> **Project status: migration in progress.** OrbitBot is the new name of **VaniaBot**. I am currently migrating the bot from VaniaBot to OrbitBot: this repository is where all active development happens, and it will be the single, up-to-date home of the project going forward. Some references to the previous name (VaniaBot) may still appear in older commits, documentation, links or portfolio entries while the migration is completed.
 
 ---
 
@@ -174,7 +172,7 @@ An optional Express 5 panel (`PanelServer`) exposes health metrics and webhook r
 | Image → PDF        | pdf-lib + ffmpeg                 | Lightweight, no subprocess for common formats |
 | Logging            | Pino                             | Structured, low-overhead logging              |
 | Validation         | Zod                              | Runtime schema validation of env + config     |
-| Testing            | Vitest                           | ~1000 unit + end-to-end tests                 |
+| Testing            | Vitest                           | ~1300 unit + end-to-end tests                 |
 | Containers         | Docker + Compose                 | Multi-stage builds, CI-published images       |
 
 ---
@@ -242,10 +240,10 @@ OrbitBot/
 ### Quick start (script)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/carlosgarcia-tech/OrbitBot/main/OrbitBot.sh | bash -s v7.1.3
+curl -fsSL https://raw.githubusercontent.com/carlosgarcia-tech/OrbitBot/main/OrbitBot.sh | bash -s v8.0.0
 ```
 
-Installs Node.js, FFmpeg and other system dependencies, clones the repo, installs npm dependencies, applies the `whatsapp-rust-bridge` patch and creates a starter `.env`. Pass a version (`v7.1.3` in the example) to pin the install; without it, the script falls back to the latest published GitHub release. You'll still need to fill in your credentials in `.env` (see Configuration below).
+Installs Node.js, FFmpeg and other system dependencies, clones the repo, installs npm dependencies, applies the `whatsapp-rust-bridge` patch and creates a starter `.env`. Pass a version (`v8.0.0` in the example) to pin the install; without it, the script falls back to the latest published GitHub release. You'll still need to fill in your credentials in `.env` (see Configuration below).
 
 ### Termux (Android)
 
@@ -296,7 +294,7 @@ Useful scripts:
 | `npm run qr` / `npm run code` | start with QR or pairing code            |
 | `npm run dev`                 | tsx watch, hot-reload                    |
 | `npm run check`               | typecheck + lint + format check          |
-| `npm test`                    | full Vitest suite (~1000 tests)          |
+| `npm test`                    | full Vitest suite (~1300 tests)          |
 | `npm run test:coverage`       | coverage report                          |
 
 Auth on first run: scan the QR, or use `USE_PAIRING_CODE=true` with `PHONE_NUMBER` to get a linking code. The session persists in `SESSION_PATH` (default `./orbitsession`).
@@ -405,7 +403,7 @@ Prefix: the configured `BOT_PREFIX` plus `.` and `!` are always accepted (longes
 The suite mixes unit tests (services, middlewares, commands) with true end-to-end tests of the message pipeline: a `FakeWASocket` is injected through the single connection seam (`WASocketFactory`), the real client boots with real middlewares and the real command registry, and assertions are made on the messages the bot "sends".
 
 ```bash
-npm test                  # everything (~1000 tests)
+npm test                  # everything (~1300 tests)
 npx vitest run tests/e2e/ # only the pipeline e2e
 npm run test:coverage     # coverage report
 ```

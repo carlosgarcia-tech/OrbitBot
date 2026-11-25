@@ -31,7 +31,7 @@ import pkg from '../../../package.json' with { type: 'json' };
 const BOT_NAME = 'ᴏʀʙɪᴛʙᴏᴛ';
 const CREATOR = 'ɪɴɢ. ᴄᴀʀʟᴏꜱ ɢᴀʀᴄɪᴀ';
 const BOT_VERSION = `𝚟${pkg.version}`;
-const REPO_URL = 'https://github.com/carlosgarcia-tech/VaniaBot';
+const REPO_URL = 'https://github.com/carlosgarcia-tech/OrbitBot';
 
 export const STICKER_BRANDING = {
   packname: `👑 ${BOT_NAME} ꜱᴛɪᴄᴋᴇʀꜱ`,

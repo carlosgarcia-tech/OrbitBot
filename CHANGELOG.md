@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.0.0] - 2026-11-25
+
+### Changed
+
+- Project renamed to **OrbitBot**. Repository links, CI badge, package metadata, install scripts and the published Docker image (`ghcr.io/carlosgarcia-tech/orbitbot`) now point to [carlosgarcia-tech/OrbitBot](https://github.com/carlosgarcia-tech/OrbitBot). No references to the previous name remain.
+- Group toggle commands are now `orbit-on`, `orbit-off` and `orbit-status` (hyphenated). The old spellings (`orbiton`, `orbitoff`, `orbitstatus`, `boton`, `botoff`, `encender`, `apagar`) keep working as aliases, and the off-state router accepts all of them.
+
+### Added
+
+- README and `.env.example` make the owner number requirement explicit: the bot only turns on for numbers listed in `OWNERS` / `OWNER_JIDS`.
+- First activation in a group is documented and covered by an e2e test: the bot stays silent until its owner sends `.orbit-on` in that group.
+- Native audio stickers (`!saudio`) with a fallback when the relay fails.
+
 ## [7.1.3] - 2026-10-01
 
 ### Changed

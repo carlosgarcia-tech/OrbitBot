@@ -1,6 +1,15 @@
 {
   "name": "orbit",
-  "version": "7.4.17",
+  "version": "8.0.0",
+  "description": "OrbitBot — production-grade WhatsApp automation system built with TypeScript",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/carlosgarcia-tech/OrbitBot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/carlosgarcia-tech/OrbitBot/issues"
+  },
+  "homepage": "https://github.com/carlosgarcia-tech/OrbitBot#readme",
   "main": "dist/index.js",
   "type": "module",
   "scripts": {
