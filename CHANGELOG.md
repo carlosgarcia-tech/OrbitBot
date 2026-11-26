@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.9] - 2026-11-25
+
+### Changed
+
+- Clarified the `!ver` reply for an already-unavailable view-once: it asks to use the command without opening the content on the phone next time.
+
 ## [8.2.8] - 2026-11-25
 
 ### Fixed

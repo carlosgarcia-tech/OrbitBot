@@ -46,7 +46,7 @@ const OWN_STUB_REPLY =
 
 const VIEW_ONCE_GONE_REPLY =
   '❌ WhatsApp ya no ofrece ese view-once al bot: normalmente se abrió en el teléfono antes de que el bot lo recibiera, así que el contenido nunca llegó y no se puede recuperar.\n\n' +
-  'Para reenviarlo, pulsa `!ver` sin abrirlo en el teléfono.';
+  'La próxima vez, pulsa `!ver` sin abrirlo en el teléfono.';
 
 /** Text of a plain or view-once wrapper (already normalised). */
 function textOf(content?: proto.IMessage | null): string | undefined {
