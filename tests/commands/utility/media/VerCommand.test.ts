@@ -45,6 +45,7 @@ const createCtx = (quoted: unknown, quotedMessageId = 'quoted1'): MessageContext
     sock: {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       requestPlaceholderResend: vi.fn().mockResolvedValue(undefined),
+      user: { id: '5219514639799:51@s.whatsapp.net', lid: '59666323251336:51@lid' },
     },
     reply: vi.fn().mockResolvedValue(undefined),
     react: vi.fn().mockResolvedValue(undefined),
@@ -167,6 +168,17 @@ describe('VerCommand', () => {
     expect(resendRequested(ctx)).toHaveLength(1);
     expect(sent(ctx)).toBeUndefined();
     expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('caché');
+  });
+
+  it('does not ask for a resend when the stub was sent by this same account', async () => {
+    const ctx = createCtx({ videoMessage: {} });
+    (ctx as unknown as { quotedParticipant: string }).quotedParticipant = '59666323251336@lid';
+
+    await new VerCommand().execute(ctx);
+
+    expect(resendRequested(ctx)).toHaveLength(0);
+    expect(sent(ctx)).toBeUndefined();
+    expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('mismo número');
   });
 
   it('logs the full failure detail when the download throws', async () => {

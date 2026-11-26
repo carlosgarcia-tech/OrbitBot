@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.7] - 2026-11-25
+
+### Fixed
+
+- `!ver` no longer waits ten seconds for a resend when the quoted stub was sent by the bot's own account. WhatsApp never delivers view-once content to other linked devices of the sender and their phone does not answer the request, so it fails immediately with an explanation.
+
 ## [8.2.6] - 2026-11-25
 
 ### Fixed

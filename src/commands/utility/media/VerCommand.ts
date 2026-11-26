@@ -14,7 +14,13 @@
 
 import { Command } from '../../Command.js';
 import { CommandCategory, CommandContext, type MessageContext } from '@/types/index.js';
-import { downloadMediaMessage, normalizeMessageContent, type proto, type WAMessage } from 'baileys';
+import {
+  areJidsSameUser,
+  downloadMediaMessage,
+  normalizeMessageContent,
+  type proto,
+  type WAMessage,
+} from 'baileys';
 import { logger } from '@/utils/logger.js';
 import { mediaMessageCache } from '@/services/media/MediaMessageCache.js';
 
@@ -32,6 +38,11 @@ interface Classification {
 const UNAVAILABLE_REPLY =
   '❌ Ese contenido ya no se puede descargar: no está en la caché del bot.\n\n' +
   'Deja el teléfono conectado y usa `!ver` respondiendo al mensaje.';
+
+const OWN_STUB_REPLY =
+  '❌ Ese contenido no llegó al bot y tu teléfono no puede reenviarlo: lo enviaste tú desde el mismo número.\n\n' +
+  'WhatsApp no entrega a los dispositivos vinculados el contenido de una sola vez que envía la cuenta principal. ' +
+  'Prueba con uno que te envíe otra persona.';
 
 /** Text of a plain or view-once wrapper (already normalised). */
 function textOf(content?: proto.IMessage | null): string | undefined {
@@ -127,6 +138,17 @@ export class VerCommand extends Command {
   static resendTimeoutMs = 10_000;
   static resendPollMs = 500;
 
+  /** True when the quoted message came from this same WhatsApp account. */
+  private isOwnQuote(ctx: MessageContext): boolean {
+    const participant = ctx.quotedParticipant;
+    const me = ctx.sock.user;
+    if (!participant || !me) return false;
+    return (
+      areJidsSameUser(participant, me.id) ||
+      (Boolean(me.lid) && areJidsSameUser(participant, me.lid as string))
+    );
+  }
+
   /**
    * Asks the primary phone to resend a message this device only got as an
    * empty stub and waits for it to land in the media cache.
@@ -221,10 +243,28 @@ export class VerCommand extends Command {
     let resolved = lookup();
     let info = classify(resolved.content);
 
-    // View-once arrives as an empty "unavailable fanout" stub and Baileys does
-    // not ask the phone for those, so request it here before giving up.
-    const media = mediaOf(info);
-    if (!info.kind || (info.kind !== 'text' && !media?.url && !media?.directPath)) {
+    const needsResend = () => {
+      const media = mediaOf(info);
+      return !info.kind || (info.kind !== 'text' && !media?.url && !media?.directPath);
+    };
+
+    // Content sent from this same account never reaches the bot, and the phone
+    // does not answer the resend request for it: skip the 10 second wait.
+    if (needsResend() && this.isOwnQuote(ctx)) {
+      logger.warn('[VerCommand] contenido propio no disponible', {
+        id: quotedMsgId,
+        chat: ctx.chat.jid,
+        quoted: quotedInfo,
+        ...cacheInfo(),
+      });
+      await ctx.react('❌');
+      await ctx.reply(OWN_STUB_REPLY);
+      return;
+    }
+
+    // View-once may arrive as an empty "unavailable fanout" stub and Baileys
+    // does not ask the phone for those, so request it here before giving up.
+    if (needsResend()) {
       await this.requestResend(ctx, quotedMsgId);
       resolved = lookup();
       info = classify(resolved.content);
