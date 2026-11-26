@@ -428,10 +428,11 @@ export function parseImpersonateTargets(output: string): string[] {
   for (const rawLine of output.split('\n')) {
     const line = rawLine.trim();
     if (!line || line.includes('✗') || /not available/i.test(line)) continue;
-    const token = /^\S+/.exec(line)?.[0] ?? '';
-    // Only lowercase identifiers are target names; headers start uppercase.
-    if (!/^[a-z][a-z0-9_.-]*$/.test(token)) continue;
-    targets.push(token);
+    const name = (/^\S+/.exec(line)?.[0] ?? '').toLowerCase();
+    // yt-dlp names targets case-insensitively ("Chrome-133" works as
+    // "chrome-133"); the table header (Client/OS/Source) is not a target.
+    if (!/^[a-z][a-z0-9_.-]*$/.test(name) || name === 'client') continue;
+    targets.push(name);
   }
   return targets;
 }

@@ -24,12 +24,12 @@ URL de prueba (falla consistentemente desde la máquina del bot):
 
 ## 2. Cadena de errores observados (evolución del diagnóstico)
 
-| # | Entorno | Error exacto | Causa de ese error |
-|---|---------|--------------|--------------------|
-| 1 | Host nativo (sin impersonación) | `Your IP address is blocked from accessing this post` | IP bloqueada por TikTok |
-| 2 | Container Docker v1 (binario standalone yt-dlp) | `The extractor is attempting impersonation, but no impersonate target is available` + `Unexpected response from webpage request` | El binario standalone **no incluye `curl_cffi`** (librería de impersonación TLS) → TikTok responde basura/bot-check |
-| 3 | Container Docker v2 (pip `yt-dlp[default,curl-cffi]`) | `HTTP Error 403: Forbidden` | Impersonación disponible pero **no aplicada automáticamente** al pedir la página |
-| 4 | Container Docker v3 (config global `--impersonate chrome`) | `HTTP Error 403: Forbidden` — **intermitente** | Impersonación aplicada y aún así 403 → **la IP está siendo rechazada por reputación, no por fingerprint** |
+| #   | Entorno                                                    | Error exacto                                                                                                                     | Causa de ese error                                                                                                  |
+| --- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 1   | Host nativo (sin impersonación)                            | `Your IP address is blocked from accessing this post`                                                                            | IP bloqueada por TikTok                                                                                             |
+| 2   | Container Docker v1 (binario standalone yt-dlp)            | `The extractor is attempting impersonation, but no impersonate target is available` + `Unexpected response from webpage request` | El binario standalone **no incluye `curl_cffi`** (librería de impersonación TLS) → TikTok responde basura/bot-check |
+| 3   | Container Docker v2 (pip `yt-dlp[default,curl-cffi]`)      | `HTTP Error 403: Forbidden`                                                                                                      | Impersonación disponible pero **no aplicada automáticamente** al pedir la página                                    |
+| 4   | Container Docker v3 (config global `--impersonate chrome`) | `HTTP Error 403: Forbidden` — **intermitente**                                                                                   | Impersonación aplicada y aún así 403 → **la IP está siendo rechazada por reputación, no por fingerprint**           |
 
 Cada paso eliminó una capa del problema; el que queda es el de la IP.
 
@@ -43,13 +43,13 @@ El comando exacto que ejecuta el bot es:
 yt-dlp --dump-json --no-download --no-playlist --quiet <url>
 ```
 
-| Test | Resultado |
-|------|-----------|
-| `--impersonate chrome` explícito, como root, 1er intento | ✅ **FUNCIONÓ** — JSON completo con formatos 720p, ttwid cookies generadas |
-| Sin `--impersonate` (comando del bot) | ❌ 403 |
+| Test                                                                                                                   | Resultado                                                                                         |
+| ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `--impersonate chrome` explícito, como root, 1er intento                                                               | ✅ **FUNCIONÓ** — JSON completo con formatos 720p, ttwid cookies generadas                        |
+| Sin `--impersonate` (comando del bot)                                                                                  | ❌ 403                                                                                            |
 | Con config `/etc/yt-dlp.conf` cargado (verificado con `-v`: `System config: ['--impersonate','chrome']`), usuario 1001 | ❌ 403 (el traceback muestra que la petición salió por el handler `curl_cffi`, o sea impersonada) |
-| Root + `--impersonate chrome` explícito, minutos después | ❌ 403 |
-| `--cookies <archivo inexistente>` | ✅ tolerado — yt-dlp arranca con jar vacío, no rompe |
+| Root + `--impersonate chrome` explícito, minutos después                                                               | ❌ 403                                                                                            |
+| `--cookies <archivo inexistente>`                                                                                      | ✅ tolerado — yt-dlp arranca con jar vacío, no rompe                                              |
 
 **Lectura:** el mismo comando con la misma impersonación funcionó una vez y
 después falló repetidamente. Eso descarta el fingerprint TLS como causa
@@ -85,10 +85,12 @@ extractor ni del bot.
 ## 5. Alternativas posibles (sin cookies)
 
 ### 5.1. Esperar/enfriar (gratis, no resuelve)
+
 Dejar pasar horas entre descargas. La evidencia sugiere que tras un periodo
 sin peticiones la primera vuelve a pasar. **No es solución para un bot.**
 
 ### 5.2. Proxy saliente (efectivo, requiere proxy)
+
 Rutear las peticiones de yt-dlp por otra IP:
 
 ```bash
@@ -97,6 +99,7 @@ yt-dlp --proxy "socks5://user:pass@host:1080" <url>
 ```
 
 Se puede meter en el mismo `/etc/yt-dlp.conf` del Dockerfile:
+
 ```
 --proxy socks5://user:pass@host:1080
 ```
@@ -110,22 +113,26 @@ Se puede meter en el mismo `/etc/yt-dlp.conf` del Dockerfile:
   existe per-extractor proxy; sería global o filtrado por env var del bot.
 
 ### 5.3. Extractor alternativo / API móvil de TikTok (frágil)
+
 yt-dlp tiene `--extractor-args "tiktok:api_hostname=api22-normal-c-useast2a.tiktokv.com"`
 para usar la API móvil en vez de la web. Suele requerir `device_id` y también
-acaba bloqueada. **No recomendado** como primario; puede ser un *fallback*
+acaba bloqueada. **No recomendado** como primario; puede ser un _fallback_
 segundo método dentro de `TikTokDownloader.ts`.
 
 ### 5.4. Servicio tercero de descarga (API externa)
+
 Servicios tipo tikwm.com, snaptik, etc. El bot ya tiene la arquitectura para
 eso (otros downloaders usan APIs), pero va contra la regla del proyecto
 ("nada de apis externas, todo desde la misma máquina"). Descartado salvo
 decisión explícita en contrario.
 
 ### 5.5. Reintentos con backoff (mitiga, ya parcialmente hecho)
+
 `--extractor-retries 3` está en el config global (commit `d26d021`).
 Con bloqueo por ráfaga ayuda poco: los 3 reintentos ocurren en segundos.
 
 ### 5.6. Cambiar la IP del servidor (no aplica acá)
+
 Si esto corrió en un VPS con IP bloqueada de plano, la salida es otra IP
 (reinicio de dial-up/dhcp del ISP, o VPS distinto). En una conexión residencial
 con IP dinámica, **reiniciar el router** puede renovar la IP y desbloquear de
@@ -169,12 +176,12 @@ es raro.
 
 ## 7. Estado del código y commits
 
-| Commit | Cambio |
-|--------|--------|
-| `652b70c` | Dockerfile: RUN gigante dividido en 3 capas + retries pip/curl (build resistente a red lenta) |
+| Commit    | Cambio                                                                                                                     |
+| --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `652b70c` | Dockerfile: RUN gigante dividido en 3 capas + retries pip/curl (build resistente a red lenta)                              |
 | `455520f` | Dockerfile: `pip install "yt-dlp[default,curl-cffi]"` (impersonación real) + `/etc/yt-dlp.conf` con `--impersonate chrome` |
-| `d26d021` | Dockerfile: config global con `--extractor-retries 3` + `--cookies /app/data/tiktok_cookies.txt` |
-| `e7852bf` | deploy.sh: modos `develop` (build local) / `production` (pull registry) |
+| `d26d021` | Dockerfile: config global con `--extractor-retries 3` + `--cookies /app/data/tiktok_cookies.txt`                           |
+| `e7852bf` | deploy.sh: modos `develop` (build local) / `production` (pull registry)                                                    |
 
 Imagen actual en la máquina: `ghcr.io/carlosgarcia-tech/orbit:6.12.18` con
 yt-dlp 2026.10.26 (pip, curl_cffi 0.17.0), ffmpeg 5.1.9, pymupdf 2.1.
@@ -194,3 +201,25 @@ yt-dlp, que fue lo que permitió diagnosticar todo esto.
    mismo config.
 3. **Combinables:** cookies + reintentos ya activos. Proxy solo si el bloqueo
    vuelve a ser total y persistente.
+
+---
+
+## 9. Solución aplicada (25 nov 2026): tikwm primero
+
+TikTok devuelve 403 a la petición de página de yt-dlp desde este servidor
+(`Unable to download webpage`), con o sin cookies. La API pública de
+[tikwm.com](https://www.tikwm.com) sí responde desde el mismo contenedor:
+devuelve metadatos y enlaces `play`/`hdplay` cuyo CDN entrega el MP4 completo
+(probado: 3 288 875 y 3 360 445 bytes, `video/mp4`). Es la ruta que usan la
+mayoría de bots de descarga.
+
+- `src/services/download/TikTokApi.ts` resuelve info y descarga desde tikwm y
+  cachea la info 5 minutos.
+- `TikTokDownloader` intenta tikwm antes que cualquier yt-dlp; yt-dlp (con
+  TikTokGuard completo) queda como respaldo.
+- Un fallo de metadatos de yt-dlp ya no abre el breaker: solo los fallos de
+  descarga lo abren.
+- `/etc/yt-dlp.conf` deja de imponer `--cookies` global (contaminaba el mismo
+  tarro con cookies de YouTube/Facebook); TikTokGuard sigue pasando su tarro.
+- `parseImpersonateTargets` acepta la salida real de yt-dlp (`Chrome-133`), así
+  la rotación de impersonación funciona.

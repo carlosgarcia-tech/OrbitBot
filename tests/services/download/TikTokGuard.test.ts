@@ -8,7 +8,11 @@ import {
   cleanCanonicalUrl,
   resolveCanonicalUrl,
 } from '../../../src/services/download/TikTokGuard.js';
-import { TikTokQueue, TikTokFileCache, createInFlightDedupe } from '../../../src/services/download/TikTokGuard.js';
+import {
+  TikTokQueue,
+  TikTokFileCache,
+  createInFlightDedupe,
+} from '../../../src/services/download/TikTokGuard.js';
 import {
   TikTokBreaker,
   isTikTokBlockError,
@@ -185,10 +189,7 @@ describe('TikTokQueue', () => {
         },
         { onQueued: p => positions.push(p) },
       ),
-      queue.enqueue(
-        async () => undefined,
-        { onQueued: p => positions.push(p) },
-      ),
+      queue.enqueue(async () => undefined, { onQueued: p => positions.push(p) }),
     ]);
     expect(positions[0]).toBe(1);
     expect(positions[1]).toBe(2);
@@ -515,6 +516,18 @@ describe('parseImpersonateTargets', () => {
   it('returns an empty list for garbage input', () => {
     expect(parseImpersonateTargets('')).toEqual([]);
   });
+
+  it('accepts the real table shape (capitalised names, Client/OS/Source header)', () => {
+    const output = [
+      '[info] Available impersonate targets',
+      'Client          OS           Source',
+      '--------------------------------------',
+      'Chrome-133      Macos-15     curl_cffi',
+      'Safari-17.2     Ios-17.2     curl_cffi',
+    ].join('\n');
+
+    expect(parseImpersonateTargets(output)).toEqual(['chrome-133', 'safari-17.2']);
+  });
 });
 
 describe('buildImpersonateCandidates', () => {
@@ -526,7 +539,13 @@ describe('buildImpersonateCandidates', () => {
       'chrome-131.0.6778.85',
       'edge101',
     ]);
-    expect(candidates).toEqual(['chrome', 'chrome-131.0.6778.85', 'safari17_0', 'firefox135', 'edge101']);
+    expect(candidates).toEqual([
+      'chrome',
+      'chrome-131.0.6778.85',
+      'safari17_0',
+      'firefox135',
+      'edge101',
+    ]);
   });
 
   it('only uses targets that actually exist in this installation', () => {
@@ -781,8 +800,8 @@ describe('TikTokGuardService', () => {
     for (let i = 0; i < 120; i++) {
       await guard.canonical(`https://www.tiktok.com/@user/video/${1000000 + i}`);
     }
-    expect((guard as unknown as { canonicalMemo: Map<string, unknown> }).canonicalMemo.size).toBeLessThanOrEqual(
-      101,
-    );
+    expect(
+      (guard as unknown as { canonicalMemo: Map<string, unknown> }).canonicalMemo.size,
+    ).toBeLessThanOrEqual(101);
   });
 });

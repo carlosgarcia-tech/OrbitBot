@@ -5,6 +5,14 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.11] - 2026-11-25
+
+### Fixed
+
+- `!tiktok` no longer fails with `HTTP Error 403: Forbidden`: metadata and the no-watermark MP4 now come from tikwm.com first, which works from the server IP, and yt-dlp remains as fallback. A blocked metadata probe no longer opens the circuit breaker and blocks the download.
+- `/etc/yt-dlp.conf` no longer forces a global `--cookies` file, so other sites (YouTube, Facebook) stop writing their cookies into TikTok's jar. TikTokGuard still passes its own jar per call.
+- Impersonation-target rotation works with the real `yt-dlp --list-impersonate-targets` output (`Chrome-133`, not only lowercase names).
+
 ## [8.2.10] - 2026-11-25
 
 ### Changed

@@ -240,10 +240,10 @@ OrbitBot/
 ### Quick start (script)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/carlosgarcia-tech/OrbitBot/main/OrbitBot.sh | bash -s v8.2.10
+curl -fsSL https://raw.githubusercontent.com/carlosgarcia-tech/OrbitBot/main/OrbitBot.sh | bash -s v8.2.11
 ```
 
-Installs Node.js, FFmpeg and other system dependencies, clones the repo, installs npm dependencies, applies the `whatsapp-rust-bridge` patch and creates a starter `.env`. Pass a version (`v8.2.10` in the example) to pin the install; without it, the script falls back to the latest published GitHub release. You'll still need to fill in your credentials in `.env` (see Configuration below).
+Installs Node.js, FFmpeg and other system dependencies, clones the repo, installs npm dependencies, applies the `whatsapp-rust-bridge` patch and creates a starter `.env`. Pass a version (`v8.2.11` in the example) to pin the install; without it, the script falls back to the latest published GitHub release. You'll still need to fill in your credentials in `.env` (see Configuration below).
 
 ### Termux (Android)
 
@@ -351,20 +351,22 @@ The old names (`.orbiton`, `.orbitoff`, `.orbitstatus`, `.boton`, `.botoff`, `.e
 
 ### TikTok downloads
 
-`!tiktok` routes every yt-dlp call through an anti-block guard: canonical URL
-resolution, a serial queue with a minimum gap, a per-video cache, a persistent
-circuit breaker and impersonation-target rotation (rationale and diagnosis:
+`!tiktok` resolves metadata and downloads through [tikwm.com](https://www.tikwm.com)
+first (TikTok answers yt-dlp's webpage request with HTTP 403 from the server), and
+falls back to yt-dlp behind an anti-block guard: canonical URL resolution, a serial
+queue with a minimum gap, a per-video cache, a persistent circuit breaker and
+impersonation-target rotation (rationale and diagnosis:
 [docs/TIKTOK_403_DEBUG.md](docs/TIKTOK_403_DEBUG.md)).
 
-| Variable                 | Description                                                    | Default     |
-| ------------------------ | -------------------------------------------------------------- | ----------- |
-| `TIKTOK_MIN_GAP_MS`      | Minimum gap between TikTok requests                            | `15000`     |
-| `TIKTOK_JITTER_MS`       | Extra random 0..N ms added to the gap                          | `5000`      |
-| `TIKTOK_CACHE_TTL_MS`    | Per-video download cache TTL                                   | `21600000`  |
-| `TIKTOK_CACHE_MAX_MB`    | Total cache size limit (oldest entries evicted first)          | `500`       |
-| `TIKTOK_BREAKER_BASE_MIN`| Breaker pause after a confirmed TikTok block (minutes)         | `15`        |
-| `TIKTOK_BREAKER_MAX_MIN` | Breaker pause cap (doubles per reopened block, minutes)        | `120`       |
-| `TIKTOK_IP_FAMILY`       | `auto`, `4` (IPv4 only) or `6` (IPv6 only) for TikTok requests  | `auto`      |
+| Variable                  | Description                                                    | Default    |
+| ------------------------- | -------------------------------------------------------------- | ---------- |
+| `TIKTOK_MIN_GAP_MS`       | Minimum gap between TikTok requests                            | `15000`    |
+| `TIKTOK_JITTER_MS`        | Extra random 0..N ms added to the gap                          | `5000`     |
+| `TIKTOK_CACHE_TTL_MS`     | Per-video download cache TTL                                   | `21600000` |
+| `TIKTOK_CACHE_MAX_MB`     | Total cache size limit (oldest entries evicted first)          | `500`      |
+| `TIKTOK_BREAKER_BASE_MIN` | Breaker pause after a confirmed TikTok block (minutes)         | `15`       |
+| `TIKTOK_BREAKER_MAX_MIN`  | Breaker pause cap (doubles per reopened block, minutes)        | `120`      |
+| `TIKTOK_IP_FAMILY`        | `auto`, `4` (IPv4 only) or `6` (IPv6 only) for TikTok requests | `auto`     |
 
 Cache, cookie jar and breaker state live under `data/` (the persistent
 `/app/data` volume in Docker), so they survive restarts.

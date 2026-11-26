@@ -3,10 +3,12 @@
  *
  * OrbitBot services module exposing `TikTokDownloader`, `TikTokVideo`.
  *
- * Every yt-dlp call goes through TikTokGuardService: canonical URL memo,
- * serial queue with minimum gap, per-video cache, persistent circuit
- * breaker and impersonation-target rotation — see docs/TIKTOK_403_DEBUG.md
- * for why (TikTok rate-limits bursts from a single IP).
+ * Downloads go through tikwm first (TikTok answers yt-dlp's webpage request
+ * with HTTP 403 from this server). yt-dlp remains the fallback and every
+ * yt-dlp call goes through TikTokGuardService: canonical URL memo, serial
+ * queue with minimum gap, per-video cache, persistent circuit breaker and
+ * impersonation-target rotation — see docs/TIKTOK_403_DEBUG.md for why
+ * (TikTok rate-limits bursts from a single IP).
  *
  * @author **Carlos G**
  */
@@ -17,6 +19,7 @@ import { left, right } from '@/utils/either.js';
 import { DownloadService, type DownloadResult } from './DownloadService.js';
 import { NetworkError } from '@/utils/errors.js';
 import { logError, logger } from '@/utils/logger.js';
+import { TikTokApi } from './TikTokApi.js';
 import {
   extractVideoId,
   mobileApiArgs,
@@ -32,6 +35,13 @@ export interface TikTokVideo {
   duration?: string;
 }
 
+/** tikwm reports whole seconds; the preview expects `m:ss`. */
+function formatDuration(seconds?: number): string | undefined {
+  if (!seconds || seconds <= 0) return undefined;
+  const minutes = Math.floor(seconds / 60);
+  return `${minutes}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
+}
+
 /** Max yt-dlp runs per user request: 3 web retries + 1 mobile-API fallback. */
 const MAX_ATTEMPTS = 4;
 
@@ -45,9 +55,11 @@ let execBridge: ((args: string[], timeout: number) => Promise<string>) | null = 
 
 export class TikTokDownloader extends DownloadService {
   private readonly guard: TikTokGuardService;
+  private readonly api: TikTokApi;
 
-  constructor(guard?: TikTokGuardService) {
+  constructor(guard?: TikTokGuardService, api: TikTokApi = new TikTokApi()) {
     super();
+    this.api = api;
     if (guard) {
       this.guard = guard;
       return;
@@ -77,8 +89,22 @@ export class TikTokDownloader extends DownloadService {
     if (validation._tag === 'Left') {
       return left(new NetworkError(validation.left.message));
     }
+
+    const canonical = await this.guard.canonical(url);
     try {
-      const canonical = await this.guard.canonical(url);
+      const data = await this.api.info(canonical);
+      return right({
+        title: data.title?.trim() || 'TikTok video',
+        author: data.author?.unique_id ?? data.author?.nickname ?? 'unknown',
+        url: canonical,
+        thumbnailUrl: this.api.absolute(data.cover),
+        duration: formatDuration(data.duration),
+      });
+    } catch (error) {
+      logger.debug(`[TikTok] tikwm info failed, using yt-dlp: ${(error as Error).message}`);
+    }
+
+    try {
       const videoId = extractVideoId(canonical);
       return await this.guard.guardRun(`info:${videoId ?? canonical}`, async () => {
         const target = await this.guard.impersonateTargetFor(0);
@@ -105,7 +131,8 @@ export class TikTokDownloader extends DownloadService {
         });
       });
     } catch (error) {
-      this.guard.handleFailure(String((error as Error).message ?? error));
+      // Metadata-only failures must not open the breaker: the download can
+      // still succeed through tikwm even when this yt-dlp probe is blocked.
       if (error instanceof TikTokBlockedError) {
         return left(new NetworkError(error.message));
       }
@@ -145,6 +172,12 @@ export class TikTokDownloader extends DownloadService {
     }
 
     const outputPath = this.generateOutputPath('tiktok', 'mp4');
+
+    // tikwm resolves and serves the media from its own IPs, so it works even
+    // while TikTok blocks this server (the yt-dlp path stays as fallback).
+    const apiResult = await this.tryApiDownload(canonical, outputPath, quality, videoId);
+    if (apiResult) return apiResult;
+
     try {
       return await this.guard.guardRun(`file:${videoId ?? canonical}`, () =>
         this.runDownloadAttempts(canonical, outputPath, videoId, quality),
@@ -156,6 +189,46 @@ export class TikTokDownloader extends DownloadService {
       }
       logError('TikTok downloadVideo', error);
       return left(new NetworkError((error as Error).message));
+    }
+  }
+
+  /**
+   * Downloads through tikwm. Returns null (and removes any partial file) when
+   * the API or its CDN fails, so the caller can fall back to yt-dlp.
+   */
+  private async tryApiDownload(
+    canonical: string,
+    outputPath: string,
+    quality: string,
+    videoId: string | null,
+  ): Promise<DownloadResult | null> {
+    try {
+      const data = await this.api.info(canonical);
+      await this.api.downloadToFile(this.api.mediaUrl(data, quality), outputPath);
+
+      if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size === 0) {
+        throw new Error('tikwm devolvió un archivo vacío');
+      }
+      const sizeCheck = this.checkFileSize(outputPath, 'video');
+      if (sizeCheck._tag === 'Left') {
+        fs.unlinkSync(outputPath);
+        return left(sizeCheck.left);
+      }
+
+      let filePath = outputPath;
+      if (videoId) {
+        this.guard.storeInCache(videoId, outputPath);
+        filePath = this.guard.serveFromCache(videoId) ?? outputPath;
+      }
+      return right({
+        filePath,
+        size: sizeCheck.right.sizeMB.toString(),
+        source: 'tikwm',
+      });
+    } catch (error) {
+      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+      logger.debug(`[TikTok] tikwm download failed, using yt-dlp: ${(error as Error).message}`);
+      return null;
     }
   }
 

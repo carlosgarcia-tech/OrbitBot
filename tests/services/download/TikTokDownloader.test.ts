@@ -3,6 +3,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { isLeft, isRight } from '../../../src/utils/either.js';
+import { TikTokApi } from '../../../src/services/download/TikTokApi.js';
 import { TikTokDownloader } from '../../../src/services/download/TikTokDownloader.js';
 import { TikTokGuardService } from '../../../src/services/download/TikTokGuard.js';
 
@@ -12,13 +13,18 @@ const BLOCK_STDERR =
 const VIDEO_ID = '7696749231666760967';
 const CANONICAL = `https://www.tiktok.com/@user/video/${VIDEO_ID}`;
 
+/** tikwm down: every route must fall back to yt-dlp. */
+function failingApi(): TikTokApi {
+  return new TikTokApi(() => Promise.reject(new Error('tikwm unreachable')));
+}
+
 class TestTikTokDownloader extends TikTokDownloader {
   public commands: string[][] = [];
   /** Scripted per-call responses: 'block' fails with the real 403 stderr, 'ok' succeeds. */
   public responses: string[] = [];
 
-  constructor(guard: TikTokGuardService) {
-    super(guard);
+  constructor(guard: TikTokGuardService, api: TikTokApi = failingApi()) {
+    super(guard, api);
   }
 
   /** Fake yt-dlp: honors --list; for --dump-json / downloads honors `responses`. */
@@ -158,7 +164,9 @@ describe('TikTokDownloader guard integration', () => {
     const result = await downloader.downloadVideo(CANONICAL, '720');
     expect(isLeft(result)).toBe(true);
     expect(result.left?.message).toMatch(/limitó temporalmente|~15 min/);
-    const downloadCalls = downloader.commands.filter(a => !a.includes('--list-impersonate-targets'));
+    const downloadCalls = downloader.commands.filter(
+      a => !a.includes('--list-impersonate-targets'),
+    );
     expect(downloadCalls).toHaveLength(0);
   });
 
@@ -200,6 +208,58 @@ describe('TikTokDownloader guard integration', () => {
   it('falls through to a download when the cached file vanishes between check and stat', async () => {
     (guard as unknown as { serveFromCache: () => string }).serveFromCache = () =>
       path.join(tmpDir, 'ghost.mp4'); // reported cached, file gone
+    const result = await downloader.downloadVideo(CANONICAL, '720');
+    expect(isRight(result)).toBe(true);
+  });
+
+  it('downloads through tikwm without invoking yt-dlp', async () => {
+    const api = new TikTokApi(async input => {
+      const url = String(input);
+      if (url.includes('/api/')) {
+        return new Response(
+          JSON.stringify({
+            code: 0,
+            data: {
+              id: VIDEO_ID,
+              title: 'Api video',
+              duration: 65,
+              play: 'https://cdn.test/sd.mp4',
+              hdplay: 'https://cdn.test/hd.mp4',
+              cover: '/cover.jpg',
+              author: { unique_id: 'tester', nickname: 'Tester' },
+            },
+          }),
+          { status: 200 },
+        );
+      }
+      expect(url).toBe('https://cdn.test/hd.mp4');
+      return new Response('api-video-bytes', { status: 200 });
+    });
+    const apiDownloader = new TestTikTokDownloader(guard, api);
+
+    const info = await apiDownloader.getVideoInfo(CANONICAL);
+    expect(isRight(info)).toBe(true);
+    expect(info.right).toMatchObject({
+      title: 'Api video',
+      author: 'tester',
+      duration: '1:05',
+      thumbnailUrl: 'https://www.tikwm.com/cover.jpg',
+    });
+
+    const result = await apiDownloader.downloadVideo(CANONICAL, '720');
+    expect(isRight(result)).toBe(true);
+    expect(result.right?.source).toBe('tikwm');
+    expect(result.right?.filePath.startsWith(path.join(tmpDir, 'cache'))).toBe(true);
+    expect(fs.readFileSync(result.right?.filePath as string, 'utf8')).toBe('api-video-bytes');
+    expect(apiDownloader.commands).toHaveLength(0);
+  });
+
+  it('keeps the breaker closed when only the metadata probe is blocked', async () => {
+    downloader.responses = ['block', 'ok'];
+    const info = await downloader.getVideoInfo(CANONICAL);
+    expect(isLeft(info)).toBe(true);
+    expect(guard.isBlocked()).toBe(false);
+
     const result = await downloader.downloadVideo(CANONICAL, '720');
     expect(isRight(result)).toBe(true);
   });
