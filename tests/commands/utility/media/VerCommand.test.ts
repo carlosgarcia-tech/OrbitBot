@@ -63,6 +63,7 @@ describe('VerCommand', () => {
     VerCommand.resendTimeoutMs = 0;
     VerCommand.resendPollMs = 1;
     mockedCache.mockReturnValue(undefined);
+    (mediaMessageCache.recent as ReturnType<typeof vi.fn>).mockReturnValue([]);
     mockedDownload.mockResolvedValue(Buffer.from('media'));
   });
 
@@ -179,6 +180,19 @@ describe('VerCommand', () => {
     expect(resendRequested(ctx)).toHaveLength(0);
     expect(sent(ctx)).toBeUndefined();
     expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('mismo número');
+  });
+
+  it('does not ask for a resend when the server already marked the view-once unavailable', async () => {
+    (mediaMessageCache.recent as ReturnType<typeof vi.fn>).mockReturnValue([
+      { id: 'quoted1', isViewOnce: true },
+    ]);
+    const ctx = createCtx({ videoMessage: {} });
+
+    await new VerCommand().execute(ctx);
+
+    expect(resendRequested(ctx)).toHaveLength(0);
+    expect(sent(ctx)).toBeUndefined();
+    expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('ya no ofrece');
   });
 
   it('logs the full failure detail when the download throws', async () => {

@@ -56,7 +56,7 @@ describe('MediaMessageCache', () => {
       message: { conversation: 'hola' },
     } as never);
     mediaMessageCache.put({
-      key: { id: 'VO1', remoteJid: 'group@g.us' },
+      key: { id: 'VO1', remoteJid: 'group@g.us', participant: 'sender@lid', isViewOnce: true },
       message: {
         viewOnceMessageV2: {
           message: { videoMessage: { url: 'https://mmg.whatsapp.net/v' } },
@@ -65,8 +65,15 @@ describe('MediaMessageCache', () => {
     } as never);
 
     expect(mediaMessageCache.recent('group@g.us')).toMatchObject([
-      { id: 'TXT1', keys: ['conversation'], viewOnce: false },
-      { id: 'VO1', keys: ['viewOnceMessageV2'], contentKeys: ['videoMessage'], viewOnce: true },
+      { id: 'TXT1', keys: ['conversation'], viewOnce: false, isViewOnce: false },
+      {
+        id: 'VO1',
+        keys: ['viewOnceMessageV2'],
+        contentKeys: ['videoMessage'],
+        viewOnce: true,
+        isViewOnce: true,
+        participant: 'sender@lid',
+      },
     ]);
   });
 

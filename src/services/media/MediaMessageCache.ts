@@ -48,7 +48,10 @@ export class MediaMessageCache {
     keys: string[];
     contentKeys: string[];
     viewOnce: boolean;
+    /** Server told us the view-once is unavailable (`<unavailable type="view_once">`). */
+    isViewOnce: boolean;
     fromMe: boolean;
+    participant?: string;
     stub?: number;
     stubParams?: string[];
     at: number;
@@ -77,7 +80,9 @@ export class MediaMessageCache {
         keys: raw ? Object.keys(raw) : [],
         contentKeys: content ? Object.keys(content) : [],
         viewOnce,
+        isViewOnce: Boolean(message.key?.isViewOnce),
         fromMe: Boolean(message.key?.fromMe),
+        participant: message.key?.participant ?? undefined,
         stub: message.messageStubType ?? undefined,
         stubParams: message.messageStubParameters ?? undefined,
         at: Date.now(),
@@ -165,7 +170,9 @@ export class MediaMessageCache {
     keys: string[];
     contentKeys: string[];
     viewOnce: boolean;
+    isViewOnce: boolean;
     fromMe: boolean;
+    participant?: string;
     stub?: number;
     stubParams?: string[];
     ageSeconds: number;
@@ -173,16 +180,31 @@ export class MediaMessageCache {
     const now = Date.now();
     return this.seen
       .filter(item => !remoteJid || item.chat === remoteJid)
-      .map(({ id, keys, contentKeys, viewOnce, fromMe, stub, stubParams, at }) => ({
-        id,
-        keys,
-        contentKeys,
-        viewOnce,
-        fromMe,
-        stub,
-        stubParams,
-        ageSeconds: Math.round((now - at) / 1000),
-      }));
+      .map(
+        ({
+          id,
+          keys,
+          contentKeys,
+          viewOnce,
+          isViewOnce,
+          fromMe,
+          participant,
+          stub,
+          stubParams,
+          at,
+        }) => ({
+          id,
+          keys,
+          contentKeys,
+          viewOnce,
+          isViewOnce,
+          fromMe,
+          participant,
+          stub,
+          stubParams,
+          ageSeconds: Math.round((now - at) / 1000),
+        }),
+      );
   }
 }
 

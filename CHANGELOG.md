@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.8] - 2026-11-25
+
+### Fixed
+
+- `!ver` no longer waits ten seconds for a resend when WhatsApp already marked the quoted view-once as unavailable (`<unavailable type="view_once">`, recorded as `isViewOnce`). It now replies immediately saying the content never reached the bot.
+
+### Added
+
+- Recent inbound messages in the media-cache diagnostics also include `isViewOnce` and the sender `participant`.
+
 ## [8.2.7] - 2026-11-25
 
 ### Fixed

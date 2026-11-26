@@ -44,6 +44,10 @@ const OWN_STUB_REPLY =
   'WhatsApp no entrega a los dispositivos vinculados el contenido de una sola vez que envía la cuenta principal. ' +
   'Prueba con uno que te envíe otra persona.';
 
+const VIEW_ONCE_GONE_REPLY =
+  '❌ WhatsApp ya no ofrece ese view-once al bot: normalmente se abrió en el teléfono antes de que el bot lo recibiera, así que el contenido nunca llegó y no se puede recuperar.\n\n' +
+  'Para reenviarlo, pulsa `!ver` sin abrirlo en el teléfono.';
+
 /** Text of a plain or view-once wrapper (already normalised). */
 function textOf(content?: proto.IMessage | null): string | undefined {
   return content?.extendedTextMessage?.text || content?.conversation || undefined;
@@ -265,6 +269,23 @@ export class VerCommand extends Command {
     // View-once may arrive as an empty "unavailable fanout" stub and Baileys
     // does not ask the phone for those, so request it here before giving up.
     if (needsResend()) {
+      // The server already marked it as an unavailable view-once: the phone has
+      // nothing to resend, so skip the 10 second wait.
+      const unavailableViewOnce = mediaMessageCache
+        .recent(ctx.chat.jid)
+        .some(item => item.id === quotedMsgId && item.isViewOnce);
+      if (unavailableViewOnce) {
+        logger.warn('[VerCommand] view-once no disponible en el teléfono', {
+          id: quotedMsgId,
+          chat: ctx.chat.jid,
+          quoted: quotedInfo,
+          ...cacheInfo(),
+        });
+        await ctx.react('❌');
+        await ctx.reply(VIEW_ONCE_GONE_REPLY);
+        return;
+      }
+
       await this.requestResend(ctx, quotedMsgId);
       resolved = lookup();
       info = classify(resolved.content);
