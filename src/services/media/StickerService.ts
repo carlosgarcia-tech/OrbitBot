@@ -5,9 +5,10 @@
  *
  * `createSticker` / `imageToSticker` / `videoToSticker` produce the plain
  * webp: static images are scaled to 512px, videos to 320px through a
- * palette. Content is padded so the whole image survives; only extremely
- * tall sources (full vertical videos) are cropped to fill the square. Pack
- * metadata is added afterwards by `addExif`.
+ * palette. The square is always filled: landscape crops side strips, normal
+ * portrait keeps its full height over a blurred copy, and only full vertical
+ * sources are cropped top/bottom. Pack metadata is added afterwards by
+ * `addExif`.
  *
  * @author **Carlos G**
  */
@@ -59,10 +60,10 @@ export class StickerService {
   /** Animated stickers are 320x320; static ones 512x512. */
   private static readonly VIDEO_STICKER_SIZE = 320;
   /**
-   * Content taller than this (height / width) is cropped to fill the square.
-   * Everything else is padded with transparency so the whole image survives:
-   * cropping the top of normal photos was the complaint. 1.6 sits just below
-   * 16:9 vertical (1.78), the "full vertical video" case.
+   * Content taller than this (height / width) counts as "full vertical" and
+   * is cropped to fill the square. Everything else keeps its full height:
+   * landscape fills by cropping side strips, portrait fills the sides with a
+   * blurred copy. 1.6 sits just below 16:9 vertical (1.78).
    */
   private static readonly CROP_ASPECT_RATIO = 1.6;
   /** WhatsApp rejects animated stickers above ~500KB. */
@@ -366,25 +367,41 @@ export class StickerService {
     });
   }
 
-  /** Scale filter for a static sticker: pad unless the source is extremely tall. */
+  /** Scale filter for a static sticker: fill the square, blurring side bands. */
   private async buildImageFilter(input: string): Promise<string> {
     const fit = await this.squareFitFilter(input, StickerService.STICKER_SIZE);
     return `${fit},format=rgba,setsar=1`;
   }
 
   /**
-   * Prefix of the scale filter that fits `input` into a `size` square.
-   * Extremely tall content is cropped to fill it; anything else is padded
-   * with transparency so no part of the image is lost.
+   * Scale filter that fills a `size` square.
+   *
+   * - Landscape, square or extremely tall: scale up and crop the overflow.
+   *   Landscape only loses side strips; extremely tall (full vertical video)
+   *   is the one case where the top/bottom may be cropped.
+   * - Normal portrait: keep the full height and fill the side gaps with a
+   *   blurred copy of the image, so nothing is left blank.
+   *
+   * Unknown dimensions fall back to the cover crop.
    */
   private async squareFitFilter(input: string, size: number): Promise<string> {
     const scale = `scale=${size}:${size}:flags=lanczos:force_original_aspect_ratio=`;
+    const cover = `${scale}increase,crop=${size}:${size}`;
     const dimensions = await this.probeDimensions(input);
-    const extremelyTall =
-      dimensions !== null && StickerService.isExtremelyTall(dimensions.width, dimensions.height);
+    if (!dimensions) return cover;
 
-    if (extremelyTall) return `${scale}increase,crop=${size}:${size}`;
-    return `${scale}decrease,pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=0x00000000`;
+    const { width, height } = dimensions;
+    const blurPortrait = width < height && !StickerService.isExtremelyTall(width, height);
+    if (!blurPortrait) return cover;
+
+    // Cheap blur: radius grows with the sticker so the bands read soft.
+    const radius = Math.round(size / 20);
+    return (
+      `split=2[bgsrc][fgsrc];` +
+      `[bgsrc]${cover},boxblur=${radius}:2[bg];` +
+      `[fgsrc]${scale}decrease[fg];` +
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2`
+    );
   }
 
   /** True when cropping to a square is preferable to shrinking the content. */

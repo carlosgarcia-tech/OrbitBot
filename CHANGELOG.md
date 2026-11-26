@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.14] - 2026-11-26
+
+### Changed
+
+- Sticker framing always fills the square now, with no transparent bands. Landscape sources are scaled to full height and lose side strips; normal portrait photos keep their full height and fill the side gaps with a blurred copy of themselves; only full vertical sources (height / width > 1.6) are cropped top/bottom. Static and animated stickers, including the Jimp fallback.
+
 ## [8.2.13] - 2026-11-26
 
 ### Fixed
