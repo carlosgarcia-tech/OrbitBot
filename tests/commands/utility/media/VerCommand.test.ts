@@ -182,7 +182,7 @@ describe('VerCommand', () => {
     expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('mismo número');
   });
 
-  it('does not ask for a resend when the server already marked the view-once unavailable', async () => {
+  it('does not ask for a resend when WhatsApp marks the message as view-once', async () => {
     (mediaMessageCache.recent as ReturnType<typeof vi.fn>).mockReturnValue([
       { id: 'quoted1', isViewOnce: true },
     ]);
@@ -192,7 +192,9 @@ describe('VerCommand', () => {
 
     expect(resendRequested(ctx)).toHaveLength(0);
     expect(sent(ctx)).toBeUndefined();
-    expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('ya no ofrece');
+    expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
+      'dispositivos vinculados',
+    );
   });
 
   it('logs the full failure detail when the download throws', async () => {

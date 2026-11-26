@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.10] - 2026-11-25
+
+### Changed
+
+- `!ver` now states the real limitation for incoming view-once content: WhatsApp does not deliver it to linked devices (the bot only gets an `<unavailable type="view_once">` marker), and WA Web skips the resend for those by design. The reply no longer blames opening it on the phone, and the description no longer promises view-once support.
+
 ## [8.2.9] - 2026-11-25
 
 ### Changed

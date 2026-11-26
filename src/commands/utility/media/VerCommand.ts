@@ -2,12 +2,13 @@
  * VerCommand.ts
  *
  * utility command `ver` — Re-sends a chat image/video/audio/text as a normal
- * message, including view-once content.
+ * message.
  * Usage: !ver (reply to the message)
  *
- * Quotes arrive without the CDN url, and view-once content now arrives as an
- * empty "unavailable fanout" stub. The original message cached at reception is
- * preferred, and when it is missing the bot asks the phone to resend it.
+ * Quotes arrive without the CDN url, so the original message cached at
+ * reception is preferred. View-once content is not delivered to linked devices
+ * by WhatsApp (the bot only gets an "unavailable" marker), so it can only be
+ * re-sent when it did reach the cache.
  *
  * @author **Carlos G**
  */
@@ -45,8 +46,8 @@ const OWN_STUB_REPLY =
   'Prueba con uno que te envíe otra persona.';
 
 const VIEW_ONCE_GONE_REPLY =
-  '❌ WhatsApp ya no ofrece ese view-once al bot: normalmente se abrió en el teléfono antes de que el bot lo recibiera, así que el contenido nunca llegó y no se puede recuperar.\n\n' +
-  'La próxima vez, pulsa `!ver` sin abrirlo en el teléfono.';
+  '❌ WhatsApp no entrega los mensajes de una sola vez a los dispositivos vinculados: el bot solo recibe el aviso, nunca el contenido (en WhatsApp Web sale «ábrelo en tu teléfono»).\n\n' +
+  'Por eso no se puede reenviar. Pide que lo manden como foto, video o audio normal.';
 
 /** Text of a plain or view-once wrapper (already normalised). */
 function textOf(content?: proto.IMessage | null): string | undefined {
@@ -130,11 +131,11 @@ function describeError(error: unknown): Record<string, unknown> {
 /** Command handler for `!ver`: re-sends the quoted message as a normal one. */
 export class VerCommand extends Command {
   name = 'ver';
-  description = 'Reenvía una imagen, video, audio o texto (también de una sola vez)';
+  description = 'Reenvía una imagen, video, audio o texto citado';
   category = CommandCategory.UTILITY;
   aliases = ['img', 'verimagen', 'image', 'reenviar'];
   usage = '!ver (responder al mensaje)';
-  examples = ['!ver (responder a una foto, video, audio o texto de una sola vez)'];
+  examples = ['!ver (responder a una foto, video, audio o texto)'];
   cooldown = 5000;
   contexts = [CommandContext.BOTH];
 
@@ -216,7 +217,7 @@ export class VerCommand extends Command {
     if (!quotedMsg || !quotedMsgId) {
       await ctx.reply(
         `❌ Debes *responder* a un mensaje para reenviarlo.\n\n` +
-          `Funciona con imágenes, videos, audios y textos, incluso de una sola vez.`,
+          `Funciona con imágenes, videos, audios y textos.`,
       );
       return;
     }
@@ -266,16 +267,15 @@ export class VerCommand extends Command {
       return;
     }
 
-    // View-once may arrive as an empty "unavailable fanout" stub and Baileys
-    // does not ask the phone for those, so request it here before giving up.
+    // WhatsApp never sends view-once content to linked devices; the bot only
+    // gets the marker, so there is nothing to resend. Normal stubs may still be
+    // recoverable, so the resend request stays for those.
     if (needsResend()) {
-      // The server already marked it as an unavailable view-once: the phone has
-      // nothing to resend, so skip the 10 second wait.
       const unavailableViewOnce = mediaMessageCache
         .recent(ctx.chat.jid)
         .some(item => item.id === quotedMsgId && item.isViewOnce);
       if (unavailableViewOnce) {
-        logger.warn('[VerCommand] view-once no disponible en el teléfono', {
+        logger.warn('[VerCommand] view-once no entregado a dispositivos vinculados', {
           id: quotedMsgId,
           chat: ctx.chat.jid,
           quoted: quotedInfo,
