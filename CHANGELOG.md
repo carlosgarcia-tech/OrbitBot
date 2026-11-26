@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.12] - 2026-11-25
+
+### Fixed
+
+- `!tiktok` accepts the URLs TikTok shares from the web app (`?is_from_webapp=1&sender_device=pc`). The shared URL validator rejected every `&` as a shell metacharacter, so direct `/video/<id>` links failed with "URL contiene patrones bloqueados" while `vt.tiktok.com` short links worked. Query separators are now allowed (yt-dlp is always spawned without a shell); the rest of the injection patterns stay blocked.
+
 ## [8.2.11] - 2026-11-25
 
 ### Fixed

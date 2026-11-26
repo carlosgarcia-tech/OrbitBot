@@ -31,7 +31,9 @@ export type DownloadError = ValidationError | NetworkError | VBotError;
 export type DownloadResult = Either<DownloadError, DownloadSuccess>;
 
 const BLOCKED_URL_PATTERNS = [
-  /[;&|`$<>{}]/,
+  // `&` is left out: it is the normal query separator in share links (TikTok,
+  // YouTube) and every downloader spawns yt-dlp without a shell.
+  /[;|`$<>{}]/,
   /localhost/i,
   /127\.\d+\.\d+\.\d+/,
   /10\.\d+\.\d+\.\d+/,

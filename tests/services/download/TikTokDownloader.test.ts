@@ -212,6 +212,17 @@ describe('TikTokDownloader guard integration', () => {
     expect(isRight(result)).toBe(true);
   });
 
+  it('accepts a TikTok share link with query parameters', async () => {
+    downloader.responses = ['ok'];
+    const shareUrl = `${CANONICAL}?is_from_webapp=1&sender_device=pc`;
+
+    const result = await downloader.downloadVideo(shareUrl, '720');
+
+    expect(isRight(result)).toBe(true);
+    const downloadArgs = downloader.commands.find(a => a.includes('-o'));
+    expect(downloadArgs).toContain(CANONICAL); // query string stripped
+  });
+
   it('downloads through tikwm without invoking yt-dlp', async () => {
     const api = new TikTokApi(async input => {
       const url = String(input);

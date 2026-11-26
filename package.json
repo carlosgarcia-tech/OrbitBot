@@ -1,6 +1,6 @@
 {
   "name": "orbit",
-  "version": "8.2.11",
+  "version": "8.2.12",
   "description": "OrbitBot — production-grade WhatsApp automation system built with TypeScript",
   "repository": {
     "type": "git",

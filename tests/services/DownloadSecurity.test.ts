@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 describe('URL Validation Security', () => {
   const BLOCKED_URL_PATTERNS = [
-    /[;&|`$<>{}]/,
+    /[;|`$<>{}]/,
     /localhost/i,
     /127\.\d+\.\d+\.\d+/,
     /10\.\d+\.\d+\.\d+/,
@@ -59,6 +59,13 @@ describe('URL Validation Security', () => {
 
     it('should accept valid Facebook URL', () => {
       const result = validateUrl('https://www.facebook.com/watch?v=123456789');
+      expect(result.valid).toBe(true);
+    });
+
+    it('should accept a TikTok share URL with query parameters', () => {
+      const result = validateUrl(
+        'https://www.tiktok.com/@user/video/1234567890?is_from_webapp=1&sender_device=pc',
+      );
       expect(result.valid).toBe(true);
     });
   });
