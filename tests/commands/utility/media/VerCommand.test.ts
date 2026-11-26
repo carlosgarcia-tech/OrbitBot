@@ -3,8 +3,8 @@
  *
  * `!ver` used to always download quoted content as an `imageMessage` (so
  * videos failed) and knew nothing about view-once wrappers. These tests pin
- * the re-send of video, view-once image/audio (from the cached original) and
- * view-once text.
+ * the re-send of video, view-once image/audio (from the cached original),
+ * view-once text and the placeholder-resend recovery.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -42,7 +42,10 @@ const createCtx = (quoted: unknown, quotedMessageId = 'quoted1'): MessageContext
     quotedMessageId,
     quotedParticipant: 'sender@s.whatsapp.net',
     chat: { jid: 'chat@g.us', isGroup: true },
-    sock: { sendMessage: vi.fn().mockResolvedValue(undefined) },
+    sock: {
+      sendMessage: vi.fn().mockResolvedValue(undefined),
+      requestPlaceholderResend: vi.fn().mockResolvedValue(undefined),
+    },
     reply: vi.fn().mockResolvedValue(undefined),
     react: vi.fn().mockResolvedValue(undefined),
   }) as unknown as MessageContext;
@@ -50,9 +53,14 @@ const createCtx = (quoted: unknown, quotedMessageId = 'quoted1'): MessageContext
 const sent = (ctx: MessageContext) =>
   (ctx.sock.sendMessage as ReturnType<typeof vi.fn>).mock.calls[0];
 
+const resendRequested = (ctx: MessageContext) =>
+  (ctx.sock.requestPlaceholderResend as ReturnType<typeof vi.fn>).mock.calls;
+
 describe('VerCommand', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    VerCommand.resendTimeoutMs = 0;
+    VerCommand.resendPollMs = 1;
     mockedCache.mockReturnValue(undefined);
     mockedDownload.mockResolvedValue(Buffer.from('media'));
   });
@@ -125,30 +133,69 @@ describe('VerCommand', () => {
     expect(mockedDownload).not.toHaveBeenCalled();
   });
 
+  it('asks the phone to resend an empty stub and re-sends the recovered video', async () => {
+    const cached = {
+      key: { id: 'quoted1', remoteJid: 'chat@g.us' },
+      message: { videoMessage: { url: 'video-url' } },
+    };
+    const ctx = createCtx({ videoMessage: {} });
+    (ctx.sock.requestPlaceholderResend as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+      mockedCache.mockReturnValue(cached);
+      return 'req1';
+    });
+
+    await new VerCommand().execute(ctx);
+
+    expect(resendRequested(ctx)).toEqual([
+      [
+        {
+          remoteJid: 'chat@g.us',
+          id: 'quoted1',
+          fromMe: false,
+          participant: 'sender@s.whatsapp.net',
+        },
+      ],
+    ]);
+    expect(sent(ctx)).toEqual(['chat@g.us', { video: Buffer.from('media') }]);
+  });
+
+  it('replies that the content is unavailable when the phone does not resend', async () => {
+    const ctx = createCtx({ videoMessage: {} });
+
+    await new VerCommand().execute(ctx);
+
+    expect(resendRequested(ctx)).toHaveLength(1);
+    expect(sent(ctx)).toBeUndefined();
+    expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('caché');
+  });
+
   it('logs the full failure detail when the download throws', async () => {
     mockedDownload.mockRejectedValue(
       Object.assign(new Error('No valid media URL or directPath present in message'), {
         statusCode: 400,
       }),
     );
-    const ctx = createCtx({ videoMessage: { mediaKey: Buffer.from('k') } });
+    const ctx = createCtx({ videoMessage: { url: 'video-url', mediaKey: Buffer.from('k') } });
 
     await new VerCommand().execute(ctx);
 
+    expect(resendRequested(ctx)).toHaveLength(0);
     expect(logger.error).toHaveBeenCalledWith(
       '[VerCommand] fallo al reenviar',
       expect.objectContaining({
         id: 'quoted1',
         kind: 'video',
         source: 'quote',
-        cached: null,
+        cached: undefined,
         error: expect.objectContaining({
           message: 'No valid media URL or directPath present in message',
           status: 400,
         }),
       }),
     );
-    expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain('caché');
+    expect((ctx.reply as ReturnType<typeof vi.fn>).mock.calls[0][0]).toContain(
+      'No se pudo reenviar',
+    );
   });
 
   it('asks for a quoted message when there is none', async () => {

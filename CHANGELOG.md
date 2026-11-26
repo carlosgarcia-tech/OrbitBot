@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.6] - 2026-11-25
+
+### Fixed
+
+- `!ver` now requests a placeholder resend from the phone when the quoted message only arrived as an empty stub (`view_once_unavailable_fanout`) and polls the media cache for up to 10 seconds before reporting it as unavailable. Baileys deliberately skips its automatic resend request for that placeholder type, so view-once content never reached the cache.
+
+### Added
+
+- Recent inbound messages in the media-cache diagnostics also include `fromMe`, the stub type and its parameters.
+
 ## [8.2.5] - 2026-11-25
 
 ### Fixed

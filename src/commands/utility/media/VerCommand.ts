@@ -5,8 +5,9 @@
  * message, including view-once content.
  * Usage: !ver (reply to the message)
  *
- * Quotes arrive without the CDN url (and view-once content arrives wrapped),
- * so the original message cached at reception is preferred for media.
+ * Quotes arrive without the CDN url, and view-once content now arrives as an
+ * empty "unavailable fanout" stub. The original message cached at reception is
+ * preferred, and when it is missing the bot asks the phone to resend it.
  *
  * @author **Carlos G**
  */
@@ -18,6 +19,19 @@ import { logger } from '@/utils/logger.js';
 import { mediaMessageCache } from '@/services/media/MediaMessageCache.js';
 
 type MediaKind = 'image' | 'video' | 'audio';
+type AnyKind = MediaKind | 'text';
+
+interface Classification {
+  kind?: AnyKind;
+  image?: proto.Message.IImageMessage;
+  video?: proto.Message.IVideoMessage;
+  audio?: proto.Message.IAudioMessage;
+  text?: string;
+}
+
+const UNAVAILABLE_REPLY =
+  '❌ Ese contenido ya no se puede descargar: no está en la caché del bot.\n\n' +
+  'Deja el teléfono conectado y usa `!ver` respondiendo al mensaje.';
 
 /** Text of a plain or view-once wrapper (already normalised). */
 function textOf(content?: proto.IMessage | null): string | undefined {
@@ -29,6 +43,35 @@ function hasContent(content?: proto.IMessage | null): boolean {
   return Boolean(
     content?.imageMessage || content?.videoMessage || content?.audioMessage || textOf(content),
   );
+}
+
+function classify(content?: proto.IMessage | null): Classification {
+  const image = content?.imageMessage ?? undefined;
+  const video = content?.videoMessage ?? undefined;
+  const audio = content?.audioMessage ?? undefined;
+  const text = textOf(content);
+  const kind: AnyKind | undefined = image
+    ? 'image'
+    : video
+      ? 'video'
+      : audio
+        ? 'audio'
+        : text
+          ? 'text'
+          : undefined;
+  return { kind, image, video, audio, text };
+}
+
+function mediaOf(
+  info: Classification,
+): { url?: string | null; directPath?: string | null } | undefined {
+  return info.kind === 'image'
+    ? info.image
+    : info.kind === 'video'
+      ? info.video
+      : info.kind === 'audio'
+        ? info.audio
+        : undefined;
 }
 
 /**
@@ -80,6 +123,49 @@ export class VerCommand extends Command {
   cooldown = 5000;
   contexts = [CommandContext.BOTH];
 
+  /** How long to wait for the phone to resend an unavailable message. */
+  static resendTimeoutMs = 10_000;
+  static resendPollMs = 500;
+
+  /**
+   * Asks the primary phone to resend a message this device only got as an
+   * empty stub and waits for it to land in the media cache.
+   */
+  private async requestResend(ctx: MessageContext, id: string): Promise<void> {
+    if (typeof ctx.sock.requestPlaceholderResend !== 'function') return;
+
+    logger.warn('[VerCommand] mensaje no disponible, pidiendo reenvío al teléfono', {
+      id,
+      chat: ctx.chat.jid,
+    });
+
+    try {
+      const requestId = await ctx.sock.requestPlaceholderResend({
+        remoteJid: ctx.chat.jid,
+        id,
+        fromMe: false,
+        participant: ctx.quotedParticipant,
+      });
+      logger.warn('[VerCommand] reenvío solicitado', { id, requestId });
+    } catch (error) {
+      logger.warn('[VerCommand] no se pudo solicitar el reenvío', {
+        id,
+        error: describeError(error),
+      });
+      return;
+    }
+
+    const deadline = Date.now() + VerCommand.resendTimeoutMs;
+    while (Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(resolve, VerCommand.resendPollMs));
+      if (hasContent(normalizeMessageContent(mediaMessageCache.get(ctx.chat.jid, id)?.message))) {
+        logger.warn('[VerCommand] mensaje recuperado del teléfono', { id });
+        return;
+      }
+    }
+    logger.warn('[VerCommand] el teléfono no reenvió el mensaje', { id });
+  }
+
   /** Downloads the given message; Baileys unwraps view-once on its own. */
   private async download(
     ctx: MessageContext,
@@ -109,21 +195,20 @@ export class VerCommand extends Command {
       return;
     }
 
-    // Unwraps view-once/ephemeral wrappers; the cached original keeps the
-    // media url/directPath, which the quote stub may have stripped.
-    const quotedContent = normalizeMessageContent(quotedMsg);
-    const cachedMessage = mediaMessageCache.get(ctx.chat.jid, quotedMsgId);
-    const cachedContent = normalizeMessageContent(cachedMessage?.message);
-    const useCached = hasContent(cachedContent);
-    const content = useCached ? cachedContent : quotedContent;
-    const source = useCached ? 'cache' : 'quote';
     const quotedInfo = describeContent(quotedMsg);
-    const cachedInfo = cachedMessage ? describeContent(cachedMessage.message) : null;
-    const cachedIds = () => mediaMessageCache.ids(ctx.chat.jid).slice(-10);
+    const quotedContent = normalizeMessageContent(quotedMsg);
+    /** Cached content wins; the quote stub may have no media at all. */
+    const lookup = () => {
+      const cached = mediaMessageCache.get(ctx.chat.jid, quotedMsgId);
+      const content = normalizeMessageContent(cached?.message);
+      return content && hasContent(content)
+        ? { content, message: cached?.message ?? quotedMsg, source: 'cache' as const }
+        : { content: quotedContent, message: quotedMsg, source: 'quote' as const };
+    };
     const cacheInfo = () => {
       const scoped = mediaMessageCache.recent(ctx.chat.jid);
       return {
-        cachedIds: cachedIds(),
+        cachedIds: mediaMessageCache.ids(ctx.chat.jid).slice(-10),
         cacheSize: mediaMessageCache.size,
         uptimeSeconds: Math.round(process.uptime()),
         recent: scoped,
@@ -131,68 +216,82 @@ export class VerCommand extends Command {
       };
     };
 
-    const image = content?.imageMessage ?? undefined;
-    const video = content?.videoMessage ?? undefined;
-    const audio = content?.audioMessage ?? undefined;
-    const text = textOf(content);
+    await ctx.react('⏳');
 
-    const kind: MediaKind | 'text' | undefined = image
-      ? 'image'
-      : video
-        ? 'video'
-        : audio
-          ? 'audio'
-          : text
-            ? 'text'
-            : undefined;
-    if (!kind) {
+    let resolved = lookup();
+    let info = classify(resolved.content);
+
+    // View-once arrives as an empty "unavailable fanout" stub and Baileys does
+    // not ask the phone for those, so request it here before giving up.
+    const media = mediaOf(info);
+    if (!info.kind || (info.kind !== 'text' && !media?.url && !media?.directPath)) {
+      await this.requestResend(ctx, quotedMsgId);
+      resolved = lookup();
+      info = classify(resolved.content);
+    }
+
+    const cachedInfo = resolved.source === 'cache' ? describeContent(resolved.message) : undefined;
+
+    if (!info.kind) {
       logger.warn('[VerCommand] contenido no reenviable', {
         id: quotedMsgId,
         chat: ctx.chat.jid,
-        source,
+        source: resolved.source,
         quoted: quotedInfo,
         cached: cachedInfo,
         ...cacheInfo(),
       });
+      await ctx.react('❌');
       await ctx.reply('❌ El mensaje citado no es una imagen, video, audio o texto.');
       return;
     }
 
-    await ctx.react('⏳');
+    const { kind } = info;
 
     try {
       if (kind === 'text') {
-        if (!text) throw new Error('NO_TEXT');
-        await ctx.sock.sendMessage(ctx.chat.jid, { text });
+        if (!info.text) throw new Error('NO_TEXT');
+        await ctx.sock.sendMessage(ctx.chat.jid, { text: info.text });
         await ctx.react('✅');
         return;
       }
 
-      if (!content) throw new Error('NO_CONTENT');
+      const finalMedia = mediaOf(info);
+      if (!finalMedia?.url && !finalMedia?.directPath) {
+        logger.warn('[VerCommand] sin url/directPath tras el reenvío', {
+          id: quotedMsgId,
+          chat: ctx.chat.jid,
+          kind,
+          source: resolved.source,
+          quoted: quotedInfo,
+          cached: cachedInfo,
+          ...cacheInfo(),
+        });
+        await ctx.react('❌');
+        await ctx.reply(UNAVAILABLE_REPLY);
+        return;
+      }
+
       // Warn level: Docker runs the bot with LOG_LEVEL=warn by default.
       logger.warn('[VerCommand] reenviando', {
         id: quotedMsgId,
         chat: ctx.chat.jid,
         kind,
-        source,
+        source: resolved.source,
         quoted: quotedInfo,
         cached: cachedInfo,
         ...cacheInfo(),
       });
-      const mediaBuffer = await this.download(
-        ctx,
-        quotedMsgId,
-        useCached ? (cachedMessage?.message ?? quotedMsg) : quotedMsg,
-      );
+      const mediaBuffer = await this.download(ctx, quotedMsgId, resolved.message);
 
       if (kind === 'image') {
-        const caption = image?.caption ?? undefined;
+        const caption = info.image?.caption ?? undefined;
         await ctx.sock.sendMessage(ctx.chat.jid, {
           image: mediaBuffer,
           ...(caption && { caption }),
         });
       } else if (kind === 'video') {
-        const caption = video?.caption ?? undefined;
+        const caption = info.video?.caption ?? undefined;
         await ctx.sock.sendMessage(ctx.chat.jid, {
           video: mediaBuffer,
           ...(caption && { caption }),
@@ -200,8 +299,8 @@ export class VerCommand extends Command {
       } else {
         await ctx.sock.sendMessage(ctx.chat.jid, {
           audio: mediaBuffer,
-          mimetype: audio?.mimetype ?? 'audio/ogg; codecs=opus',
-          ptt: Boolean(audio?.ptt),
+          mimetype: info.audio?.mimetype ?? 'audio/ogg; codecs=opus',
+          ptt: Boolean(info.audio?.ptt),
         });
       }
 
@@ -211,7 +310,7 @@ export class VerCommand extends Command {
         id: quotedMsgId,
         chat: ctx.chat.jid,
         kind,
-        source,
+        source: resolved.source,
         quoted: quotedInfo,
         cached: cachedInfo,
         ...cacheInfo(),
@@ -219,14 +318,8 @@ export class VerCommand extends Command {
       });
       await ctx.react('❌');
 
-      // A quote without url/directPath can only be downloaded from the cache.
-      const unavailable = source === 'quote' && !quotedInfo.url && !quotedInfo.directPath;
-      await ctx.reply(
-        unavailable
-          ? '❌ Ese contenido ya no se puede descargar: no está en la caché del bot.\n\n' +
-              'Envía el contenido de una sola vez con el bot encendido y usa `!ver` sin reiniciarlo.'
-          : '❌ No se pudo reenviar el contenido.',
-      );
+      const unavailable = !quotedInfo.url && !quotedInfo.directPath;
+      await ctx.reply(unavailable ? UNAVAILABLE_REPLY : '❌ No se pudo reenviar el contenido.');
     }
   }
 }

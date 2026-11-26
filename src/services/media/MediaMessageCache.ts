@@ -48,6 +48,9 @@ export class MediaMessageCache {
     keys: string[];
     contentKeys: string[];
     viewOnce: boolean;
+    fromMe: boolean;
+    stub?: number;
+    stubParams?: string[];
     at: number;
   }> = [];
 
@@ -74,6 +77,9 @@ export class MediaMessageCache {
         keys: raw ? Object.keys(raw) : [],
         contentKeys: content ? Object.keys(content) : [],
         viewOnce,
+        fromMe: Boolean(message.key?.fromMe),
+        stub: message.messageStubType ?? undefined,
+        stubParams: message.messageStubParameters ?? undefined,
         at: Date.now(),
       });
       if (this.seen.length > 20) this.seen.shift();
@@ -159,16 +165,22 @@ export class MediaMessageCache {
     keys: string[];
     contentKeys: string[];
     viewOnce: boolean;
+    fromMe: boolean;
+    stub?: number;
+    stubParams?: string[];
     ageSeconds: number;
   }> {
     const now = Date.now();
     return this.seen
       .filter(item => !remoteJid || item.chat === remoteJid)
-      .map(({ id, keys, contentKeys, viewOnce, at }) => ({
+      .map(({ id, keys, contentKeys, viewOnce, fromMe, stub, stubParams, at }) => ({
         id,
         keys,
         contentKeys,
         viewOnce,
+        fromMe,
+        stub,
+        stubParams,
         ageSeconds: Math.round((now - at) / 1000),
       }));
   }
