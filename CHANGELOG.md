@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.13] - 2026-11-26
+
+### Fixed
+
+- `!sticker` (and the other sticker commands) no longer crops the top of normal photos: content is scaled to fit and padded with transparent bands, so the whole image survives. Only full vertical sources taller than 1.6:1 (16:9 vertical videos and the like) are still cropped to fill the square, since padding would shrink them to a sliver. Applies to static images and animated video stickers.
+
 ## [8.2.12] - 2026-11-25
 
 ### Fixed

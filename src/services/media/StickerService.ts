@@ -5,7 +5,9 @@
  *
  * `createSticker` / `imageToSticker` / `videoToSticker` produce the plain
  * webp: static images are scaled to 512px, videos to 320px through a
- * palette. Pack metadata is added afterwards by `addExif`.
+ * palette. Content is padded so the whole image survives; only extremely
+ * tall sources (full vertical videos) are cropped to fill the square. Pack
+ * metadata is added afterwards by `addExif`.
  *
  * @author **Carlos G**
  */
@@ -54,6 +56,15 @@ interface FileTypeModule {
 export class StickerService {
   private static readonly TEMP_DIR = './data/temp';
   private static readonly STICKER_SIZE = 512;
+  /** Animated stickers are 320x320; static ones 512x512. */
+  private static readonly VIDEO_STICKER_SIZE = 320;
+  /**
+   * Content taller than this (height / width) is cropped to fill the square.
+   * Everything else is padded with transparency so the whole image survives:
+   * cropping the top of normal photos was the complaint. 1.6 sits just below
+   * 16:9 vertical (1.78), the "full vertical video" case.
+   */
+  private static readonly CROP_ASPECT_RATIO = 1.6;
   /** WhatsApp rejects animated stickers above ~500KB. */
   private static readonly MAX_VIDEO_STICKER_BYTES = 450 * 1024;
   /**
@@ -338,17 +349,11 @@ export class StickerService {
     }
   }
 
-  private ffmpegImageProcess(input: string, output: string): Promise<void> {
-    // Fill the whole square: cover from the center and crop the overflow.
-    // A contained fit left the image small inside blurred bands.
-    const size = StickerService.STICKER_SIZE;
-    const filter =
-      `scale=${size}:${size}:flags=lanczos:force_original_aspect_ratio=increase,` +
-      `crop=${size}:${size},format=rgba,setsar=1`;
-
+  private async ffmpegImageProcess(input: string, output: string): Promise<void> {
+    const filter = await this.buildImageFilter(input);
     const args = ['-y', '-i', input, '-vf', filter, '-f', 'webp', '-quality', '100', output];
 
-    return new Promise((resolve, reject) => {
+    await new Promise<void>((resolve, reject) => {
       const ffmpeg = spawn('ffmpeg', args);
       let stderr = '';
       ffmpeg.stderr.on('data', data => {
@@ -361,10 +366,70 @@ export class StickerService {
     });
   }
 
+  /** Scale filter for a static sticker: pad unless the source is extremely tall. */
+  private async buildImageFilter(input: string): Promise<string> {
+    const fit = await this.squareFitFilter(input, StickerService.STICKER_SIZE);
+    return `${fit},format=rgba,setsar=1`;
+  }
+
+  /**
+   * Prefix of the scale filter that fits `input` into a `size` square.
+   * Extremely tall content is cropped to fill it; anything else is padded
+   * with transparency so no part of the image is lost.
+   */
+  private async squareFitFilter(input: string, size: number): Promise<string> {
+    const scale = `scale=${size}:${size}:flags=lanczos:force_original_aspect_ratio=`;
+    const dimensions = await this.probeDimensions(input);
+    const extremelyTall =
+      dimensions !== null && StickerService.isExtremelyTall(dimensions.width, dimensions.height);
+
+    if (extremelyTall) return `${scale}increase,crop=${size}:${size}`;
+    return `${scale}decrease,pad=${size}:${size}:(ow-iw)/2:(oh-ih)/2:color=0x00000000`;
+  }
+
+  /** True when cropping to a square is preferable to shrinking the content. */
+  private static isExtremelyTall(width: number, height: number): boolean {
+    return width > 0 && height / width > StickerService.CROP_ASPECT_RATIO;
+  }
+
+  /** First video stream dimensions, or null when ffprobe cannot read them. */
+  private probeDimensions(input: string): Promise<{ width: number; height: number } | null> {
+    return new Promise(resolve => {
+      const probe = spawn('ffprobe', [
+        '-v',
+        'error',
+        '-select_streams',
+        'v:0',
+        '-show_entries',
+        'stream=width,height',
+        '-of',
+        'csv=s=x:p=0',
+        input,
+      ]);
+      let output = '';
+      probe.stdout.on('data', data => {
+        output += data.toString();
+      });
+      probe.on('close', () => {
+        const [width, height] = output.trim().split('x').map(Number);
+        resolve(width > 0 && height > 0 ? { width, height } : null);
+      });
+      probe.on('error', () => resolve(null));
+    });
+  }
+
   private async imageToStickerJimp(buffer: Buffer): Promise<Buffer> {
     const { Jimp } = await import('jimp');
     const image = await Jimp.read(buffer);
-    image.cover({ w: StickerService.STICKER_SIZE, h: StickerService.STICKER_SIZE });
+    const { width, height } = image.bitmap;
+
+    // Mirror the ffmpeg policy: only extreme heights are cropped; the rest is
+    // scaled to fit and ffmpeg adds the transparent padding.
+    if (StickerService.isExtremelyTall(width, height)) {
+      image.cover({ w: StickerService.STICKER_SIZE, h: StickerService.STICKER_SIZE });
+    } else {
+      image.scaleToFit({ w: StickerService.STICKER_SIZE, h: StickerService.STICKER_SIZE });
+    }
 
     const tempInput = join(StickerService.TEMP_DIR, `jimp-${Date.now()}.png`);
     const tempOutput = join(StickerService.TEMP_DIR, `jimp-${Date.now()}.webp`);
@@ -450,16 +515,16 @@ export class StickerService {
     }
   }
 
-  private ffmpegVideoProcess(
+  private async ffmpegVideoProcess(
     input: string,
     output: string,
     fps = 15,
     qscale = 75,
     seconds = 10,
   ): Promise<void> {
-    // Cover the whole square, like images: no bands, the sticker reads big.
+    const fit = await this.squareFitFilter(input, StickerService.VIDEO_STICKER_SIZE);
     const filter =
-      `scale=320:320:force_original_aspect_ratio=increase,crop=320:320,fps=${fps}` +
+      `${fit},fps=${fps}` +
       ',split [a][b]; [a] palettegen=reserve_transparent=on:transparency_color=ffffff [p]; [b][p] paletteuse';
 
     // Input-side cut: palettegen otherwise swallows the WHOLE video
