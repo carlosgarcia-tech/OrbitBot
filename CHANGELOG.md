@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.15] - 2026-11-26
+
+### Fixed
+
+- `!saudio` now combines media that cites another one: replying to an image/video that quotes an audio, or to an audio that quotes an image/video, reuses both pieces. It only looked at the directly quoted message, so it answered `NO_AUDIO`. Cached originals are preferred so the quoted media keeps its CDN url, and a quoted image with no audio now gets a clear instruction instead of the "ese video no tiene audio" message.
+
 ## [8.2.14] - 2026-11-26
 
 ### Changed

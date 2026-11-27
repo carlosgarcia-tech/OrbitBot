@@ -146,6 +146,98 @@ describe('AudioStickerCommand', () => {
     expect(mocks.createAudioSticker).toHaveBeenCalledWith({ visual: VISUAL, audio: AUDIO });
   });
 
+  it('combines a quoted image with the audio it cites', async () => {
+    const audioOriginal = {
+      key: { id: 'Q-AUD', remoteJid: 'chat@g.us', fromMe: false },
+      message: { audioMessage: { url: 'https://mmg.whatsapp.net/a', mediaKey: Buffer.from('k') } },
+    };
+    const imageOriginal = {
+      key: { id: 'Q-IMG', remoteJid: 'chat@g.us', fromMe: false },
+      message: {
+        imageMessage: {
+          mimetype: 'image/jpeg',
+          contextInfo: {
+            stanzaId: 'Q-AUD',
+            participant: 'x@s.whatsapp.net',
+            quotedMessage: audioOriginal.message,
+          },
+        },
+      },
+    };
+    mediaMessageCache.put(audioOriginal as never);
+    mediaMessageCache.put(imageOriginal as never);
+
+    const ctx = createCtx({
+      message: {
+        key: { id: 'm1', remoteJid: 'chat@g.us', fromMe: false },
+        message: { extendedTextMessage: { text: '!saudio' } },
+      },
+      quoted: imageOriginal.message,
+      quotedMessageId: 'Q-IMG',
+      quotedParticipant: 'x@s.whatsapp.net',
+    });
+
+    await command.execute(ctx);
+
+    expect(mocks.download.mock.calls[0]?.[0]).toBe(imageOriginal);
+    expect(mocks.download.mock.calls[1]?.[0]).toBe(audioOriginal);
+    expect(mocks.createAudioSticker).toHaveBeenCalledWith({ visual: VISUAL, audio: AUDIO });
+  });
+
+  it('combines a quoted audio with the image it cites', async () => {
+    const imageOriginal = {
+      key: { id: 'Q-IMG', remoteJid: 'chat@g.us', fromMe: false },
+      message: { imageMessage: { url: 'https://mmg.whatsapp.net/i', mediaKey: Buffer.from('k') } },
+    };
+    const audioOriginal = {
+      key: { id: 'Q-AUD', remoteJid: 'chat@g.us', fromMe: false },
+      message: {
+        audioMessage: {
+          mimetype: 'audio/ogg',
+          contextInfo: {
+            stanzaId: 'Q-IMG',
+            participant: 'x@s.whatsapp.net',
+            quotedMessage: imageOriginal.message,
+          },
+        },
+      },
+    };
+    mediaMessageCache.put(imageOriginal as never);
+    mediaMessageCache.put(audioOriginal as never);
+
+    const ctx = createCtx({
+      message: {
+        key: { id: 'm1', remoteJid: 'chat@g.us', fromMe: false },
+        message: { extendedTextMessage: { text: '!saudio' } },
+      },
+      quoted: audioOriginal.message,
+      quotedMessageId: 'Q-AUD',
+      quotedParticipant: 'x@s.whatsapp.net',
+    });
+
+    await command.execute(ctx);
+
+    expect(mocks.download.mock.calls[0]?.[0]).toBe(imageOriginal);
+    expect(mocks.download.mock.calls[1]?.[0]).toBe(audioOriginal);
+    expect(mocks.createAudioSticker).toHaveBeenCalledWith({ visual: VISUAL, audio: AUDIO });
+  });
+
+  it('asks for an audio when a quoted image has none to cite', async () => {
+    const ctx = createCtx({
+      message: {
+        key: { id: 'm1', remoteJid: 'chat@g.us', fromMe: false },
+        message: { extendedTextMessage: { text: '!saudio' } },
+      },
+      quoted: { imageMessage: { mimetype: 'image/jpeg' } },
+      quotedMessageId: 'Q-IMG',
+    });
+
+    await command.execute(ctx);
+
+    expect(ctx.reply).toHaveBeenCalledWith(expect.stringContaining('no trae audio'));
+    expect(mocks.download).not.toHaveBeenCalled();
+  });
+
   it('asks for instructions when the quoted message is not audio', async () => {
     const ctx = createCtx({
       quoted: { extendedTextMessage: { text: 'hola' } },
