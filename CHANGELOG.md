@@ -14,7 +14,6 @@ and versioning follows [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - All downloaders share a global limit of two external processes. A third `yt-dlp`/`ffmpeg` waits in FIFO order instead of competing for CPU, which is what a basic VPS and a phone running Termux can sustain, and the limit is honest because the slot is taken before the process is spawned.
-- `!sticker` / `!s` refuses a video longer than 10 s before downloading it, using the duration WhatsApp already reports. Before, it downloaded the whole file, trimmed it to 10 s and often timed out on the way.
 - Download errors keep only the last 8 KB of `yt-dlp` stderr, so a noisy run can no longer grow that string without bound. stdout is still returned whole because metadata calls parse it as JSON.
 - The TikTok disk cache moved into a shared `MediaFileCache` (same TTL/eviction behaviour) so YouTube reuses it instead of duplicating the logic; cache keys that could escape the cache directory are rejected.
 

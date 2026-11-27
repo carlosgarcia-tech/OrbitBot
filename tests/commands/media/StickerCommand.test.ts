@@ -34,7 +34,7 @@ const mockedDownload = downloadMediaMessage as ReturnType<typeof vi.fn>;
 const mockedCreate = StickerHelper.createSticker as ReturnType<typeof vi.fn>;
 
 const VIDEO_MSG = {
-  videoMessage: { mimetype: 'video/mp4', seconds: 5 },
+  videoMessage: { mimetype: 'video/mp4', seconds: 120 },
 } as never;
 
 const IMG_MSG = {
@@ -98,27 +98,10 @@ describe('StickerCommand error reporting', () => {
     expect(reply).toContain('descargar');
   });
 
-  it('refuses a video longer than ten seconds before downloading it', async () => {
-    const longCtx = createCtx({
-      message: {
-        key: { id: 'm2', remoteJid: 'chat@g.us', fromMe: false },
-        message: { videoMessage: { mimetype: 'video/mp4', seconds: 120 } },
-      },
-    });
-
-    await command.execute(longCtx);
-
-    expect(mockedDownload).not.toHaveBeenCalled();
-    const reply = (longCtx.reply as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as string;
-    expect(reply).toContain('demasiado largo');
-  });
-
   it('downloads quoted media from the original cached message, not the url-less stub', async () => {
     const original = {
       key: { id: 'Q1', remoteJid: 'chat@g.us', fromMe: false, participant: 'x@s.whatsapp.net' },
-      message: {
-        imageMessage: { url: 'https://mmg.whatsapp.net/full', mediaKey: Buffer.from('k') },
-      },
+      message: { imageMessage: { url: 'https://mmg.whatsapp.net/full', mediaKey: Buffer.from('k') } },
     };
     const { mediaMessageCache } = await import('@/services/media/MediaMessageCache.js');
     mediaMessageCache.put(original);
