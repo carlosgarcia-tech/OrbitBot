@@ -106,8 +106,7 @@ vi.mock('../../src/services/chat/ChatSummaryService.js', () => ({
 vi.mock('../../src/services/system/PinVerificationService.js', () => ({
   pinVerificationService: {
     verifyPin: (...args: unknown[]) => mockVerifyPin(...args),
-    buildPendingCommandContext: (...args: unknown[]) =>
-      mockBuildPendingCommandContext(...args),
+    buildPendingCommandContext: (...args: unknown[]) => mockBuildPendingCommandContext(...args),
   },
 }));
 
@@ -297,7 +296,11 @@ describe('MainMessagePipeline', () => {
     mockHandleMention.mockResolvedValue(undefined);
     mockHandleAudioResponse.mockResolvedValue(undefined);
     mockGetBotPermissions.mockResolvedValue({ isAdmin: false, isSuperAdmin: false });
-    mockGetUserPermissions.mockResolvedValue({ isAdmin: false, isOwner: false, isSuperAdmin: false });
+    mockGetUserPermissions.mockResolvedValue({
+      isAdmin: false,
+      isOwner: false,
+      isSuperAdmin: false,
+    });
     mockGetBlockedLinkInfo.mockReturnValue({ blocked: false, link: null, action: 'delete' });
     mockAddChatMessage.mockClear();
     mockVerifyPin.mockResolvedValue({ valid: false });
@@ -330,7 +333,9 @@ describe('MainMessagePipeline', () => {
 
     it('never processes messages sent by the bot itself', async () => {
       const { fire, stats, antiSpam } = createPipeline();
-      const msg = makeMessage('.pipeping', { key: { id: 'self-1', remoteJid: PRIVATE_JID, fromMe: true } });
+      const msg = makeMessage('.pipeping', {
+        key: { id: 'self-1', remoteJid: PRIVATE_JID, fromMe: true },
+      });
 
       fireUpsert(fire, msg);
       await flush();
@@ -353,7 +358,9 @@ describe('MainMessagePipeline', () => {
 
     it('ignores messages without an id', async () => {
       const { fire, stats } = createPipeline();
-      const msg = makeMessage('hello', { key: { id: undefined, remoteJid: PRIVATE_JID, fromMe: false } });
+      const msg = makeMessage('hello', {
+        key: { id: undefined, remoteJid: PRIVATE_JID, fromMe: false },
+      });
 
       fireUpsert(fire, msg);
       await flush();
@@ -390,7 +397,9 @@ describe('MainMessagePipeline', () => {
   describe('listener side effects', () => {
     it('routes reactions to handleReaccion and skips everything else', async () => {
       const { fire, sock, stats } = createPipeline();
-      const msg = makeMessage('', { message: { reactionMessage: { key: { id: 'r1' }, text: '👍' } } });
+      const msg = makeMessage('', {
+        message: { reactionMessage: { key: { id: 'r1' }, text: '👍' } },
+      });
 
       fireUpsert(fire, msg);
       await flush();
@@ -478,6 +487,19 @@ describe('MainMessagePipeline', () => {
 
       expect(mockHandleMention).toHaveBeenCalledWith(expect.any(MessageContext), BOT_JID);
       expect(cacheManager.hasProcessedMessage(String(msg.key.id))).toBe(true);
+    });
+
+    it('does not block the sequential lane while an AI mention is pending', async () => {
+      mockHandleMention.mockReturnValue(new Promise(() => {}));
+      const { fire } = createPipeline();
+      const { execute } = registerCommand('pipeping');
+
+      fireUpsert(fire, makeGroupMessage('hola bot'));
+      fireUpsert(fire, makeMessage('.pipeping'));
+      await flush();
+
+      expect(mockHandleMention).toHaveBeenCalled();
+      expect(execute).toHaveBeenCalledTimes(1);
     });
 
     it('does not run conversation handlers for non-command private messages', async () => {
@@ -592,7 +614,11 @@ describe('MainMessagePipeline', () => {
   describe('antilink guard', () => {
     const blockedResult = {
       blocked: true,
-      link: { raw: 'https://chat.whatsapp.com/abc', domain: 'chat.whatsapp.com', type: 'wa_group' as const },
+      link: {
+        raw: 'https://chat.whatsapp.com/abc',
+        domain: 'chat.whatsapp.com',
+        type: 'wa_group' as const,
+      },
       action: 'delete' as const,
     };
 
@@ -622,11 +648,7 @@ describe('MainMessagePipeline', () => {
       fireUpsert(fire, msg);
       await flush();
 
-      expect(sock.groupParticipantsUpdate).toHaveBeenCalledWith(
-        GROUP_JID,
-        [SENDER_JID],
-        'remove',
-      );
+      expect(sock.groupParticipantsUpdate).toHaveBeenCalledWith(GROUP_JID, [SENDER_JID], 'remove');
     });
 
     it('exempts group admins from antilink moderation', async () => {
@@ -818,7 +840,7 @@ describe('MainMessagePipeline', () => {
       expect(cacheManager.hasProcessedMessage(String(msg.key.id))).toBe(true);
     });
 
-    it('passes the parallelizable flag through to the message processor', async () => {
+    it('passes the parallel lane through to the message processor', async () => {
       const { fire, messageProcessor } = createPipeline();
       registerCommand('pipepar', { parallelizable: true });
 
@@ -828,7 +850,21 @@ describe('MainMessagePipeline', () => {
       expect(messageProcessor.process).toHaveBeenCalledWith(
         expect.any(String),
         expect.any(Function),
-        true,
+        'parallel',
+      );
+    });
+
+    it('routes heavy commands to their own lane', async () => {
+      const { fire, messageProcessor } = createPipeline();
+      registerCommand('pipeheavy', { heavy: true });
+
+      fireUpsert(fire, makeMessage('.pipeheavy x'));
+      await flush();
+
+      expect(messageProcessor.process).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Function),
+        'heavy',
       );
     });
 
@@ -1007,7 +1043,11 @@ describe('MainMessagePipeline', () => {
     it('never reaches the handler when a sequential middleware does not call next', async () => {
       const order: string[] = [];
       const middlewares: FakeMiddlewareConfig[] = [
-        { middleware: makeMiddleware('blocker', order, 'stop'), priority: 5, canRunParallel: false },
+        {
+          middleware: makeMiddleware('blocker', order, 'stop'),
+          priority: 5,
+          canRunParallel: false,
+        },
       ];
       const { fire, stats } = createPipeline({ middlewares });
       const { execute } = registerCommand('pipeping');

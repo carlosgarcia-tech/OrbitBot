@@ -33,7 +33,6 @@ export class BlackjackCommand extends Command {
   usage = '!blackjack <cantidad> [hit|stand]';
   examples = ['!blackjack 500', '!blackjack 500 hit', '!blackjack 500 stand'];
   cooldown = 5000;
-  parallelizable = true;
 
   private readonly SUITS = ['♠️', '♥️', '♦️', '♣️'];
   private readonly VALUES = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];

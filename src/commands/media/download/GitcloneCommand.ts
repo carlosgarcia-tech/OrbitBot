@@ -29,6 +29,7 @@ export class GitcloneCommand extends Command {
   /** Downloads legitimately exceed the 30s default pipeline timeout. */
   timeout = 180000;
   parallelizable = true;
+  heavy = true;
   description = 'Descarga un repositorio de GitHub como zip';
   category = CommandCategory.MEDIA;
   aliases = ['gitclone'];

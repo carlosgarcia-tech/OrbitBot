@@ -40,6 +40,7 @@ export class FacebookCommand extends Command {
   timeout = 180000;
   /** Independent network downloads: safe to run concurrently. */
   parallelizable = true;
+  heavy = true;
   description = 'Download Facebook videos and Reels';
   category = CommandCategory.MEDIA;
   aliases = ['fb', 'fbvideo'];

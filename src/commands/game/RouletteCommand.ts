@@ -23,7 +23,6 @@ export class RouletteCommand extends Command {
   usage = '!roulette <rojo|negro|verde|par|impar> <cantidad>';
   examples = ['!roulette rojo 500', '!ruleta verde 100'];
   cooldown = 5000;
-  parallelizable = true;
 
   private readonly RED_NUMBERS = [
     1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36,

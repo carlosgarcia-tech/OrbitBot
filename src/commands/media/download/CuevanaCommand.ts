@@ -34,6 +34,7 @@ export class CuevanaCommand extends Command {
   timeout = 180000;
   /** Independent network downloads: safe to run concurrently. */
   parallelizable = true;
+  heavy = true;
   description = 'Busca y descarga películas/series de Cuevana';
   category = CommandCategory.MEDIA;
   aliases = ['cv', 'cuevana', 'serie'];

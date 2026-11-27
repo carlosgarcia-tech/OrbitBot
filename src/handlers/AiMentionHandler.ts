@@ -19,6 +19,11 @@ import { getContextInfo } from '@/utils/getContextInfo.js';
 import { serviceManager } from '@/services/system/Servicemanager.js';
 import { PermissionService } from '@/services/PermissionService.js';
 import { detectPromptInjection } from '@/utils/promptInjection.js';
+import { Semaphore } from '@/utils/Semaphore.js';
+
+/** Groq replies are slow and cost money; two in flight is plenty per process. */
+const AI_REPLY_MAX_CONCURRENCY = 2;
+const aiReplyLimiter = new Semaphore(AI_REPLY_MAX_CONCURRENCY);
 
 /**
  * Handles mention events for AI chat.
@@ -108,7 +113,9 @@ export async function handleMention(ctx: MessageContext, botJid: string): Promis
 
   await ctx.react('🤔');
 
-  const response = await aiService.chat(ctx.chat.jid, ctx.sender.jid, cleanText);
+  const response = await aiReplyLimiter.run(() =>
+    aiService.chat(ctx.chat.jid, ctx.sender.jid, cleanText),
+  );
 
   if (!isRight(response)) {
     await ctx.react('❌');

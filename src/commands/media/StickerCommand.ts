@@ -37,6 +37,9 @@ export class StickerCommand extends Command {
   aliases = ['s'];
   usage = '!sticker <reply to image/video>';
   timeout = 60_000;
+  /** ffmpeg + media download: its own capped lane so it cannot starve fast commands. */
+  parallelizable = true;
+  heavy = true;
   examples = ['!sticker', '!s'];
   contexts = [CommandContext.BOTH];
 

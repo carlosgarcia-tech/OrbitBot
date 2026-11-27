@@ -42,6 +42,7 @@ export class YtMp3Command extends Command {
   timeout = 180000;
   /** Independent network downloads: safe to run concurrently. */
   parallelizable = true;
+  heavy = true;
   description = 'Download YouTube audio as MP3';
   category = CommandCategory.MEDIA;
   aliases = ['yta', 'ytaudio', 'play', 'playmp3'];

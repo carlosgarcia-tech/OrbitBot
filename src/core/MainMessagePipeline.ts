@@ -52,7 +52,7 @@ import { antilinkService } from '@/services/moderation/AntilinkService.js';
 import { chatSummaryService } from '@/services/chat/ChatSummaryService.js';
 import { PinVerificationMiddleware } from '@/middlewares/PinVerificationMiddleware.js';
 import { mediaMessageCache } from '@/services/media/MediaMessageCache.js';
-import type { RealTimeMessageProcessor } from './RealTimeMessageProcessor.js';
+import type { RealTimeMessageProcessor, MessageLane } from './RealTimeMessageProcessor.js';
 
 /** Entry in the middleware chain; see Client.ts for the field semantics. */
 interface MiddlewareConfig {
@@ -181,7 +181,7 @@ export class MainMessagePipeline {
       return;
     }
 
-    const parallelizable = this.isParallelizableCommand(message);
+    const lane = this.commandLane(message);
     this.stats.messagesReceived++;
 
     queueMicrotask(() => {
@@ -208,7 +208,7 @@ export class MainMessagePipeline {
               logError('handleMessageRealTime', error);
             }
           },
-          parallelizable,
+          lane,
         );
         this.maybeLogStats();
       })();
@@ -240,16 +240,25 @@ export class MainMessagePipeline {
     return msgTimestamp > 0 && msgTimestamp < startupTime;
   }
 
-  private isParallelizableCommand(message: WAMessage): boolean {
+  /**
+   * Concurrency class for this message. Heavy commands (downloads, ffmpeg)
+   * get their own smaller cap; read-only commands share the parallel lane;
+   * everything else stays sequential so state mutations never race.
+   *
+   * Lazy commands that are not registered yet fall back to sequential; after
+   * their first use they are registered and take the right lane.
+   */
+  private commandLane(message: WAMessage): MessageLane {
     const text = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
     const matchedPrefix = matchCommandPrefix(text);
-    if (matchedPrefix === undefined) return false;
+    if (matchedPrefix === undefined) return 'sequential';
 
     const commandRest = text.slice(matchedPrefix.length);
     const commandName = commandRest.split(' ')[0]?.toLowerCase() ?? '';
     const fullCommandName = commandRest.toLowerCase();
     const cmd = commandRegistry.get(fullCommandName) || commandRegistry.get(commandName);
-    return cmd?.parallelizable || false;
+    if (cmd?.heavy) return 'heavy';
+    return cmd?.parallelizable ? 'parallel' : 'sequential';
   }
 
   /**
@@ -398,7 +407,11 @@ export class MainMessagePipeline {
       return true;
     }
     const botJid = this.sock.user?.id ?? '';
-    await handleMention(ctx, botJid);
+    // AI replies can take seconds. Keeping them off the sequential lane lets
+    // a mention coexist with quick commands and other chats' messages.
+    void handleMention(ctx, botJid).catch(error =>
+      logError('[MainMessagePipeline] handleMention', error),
+    );
     cacheManager.markMessageProcessed(messageId);
     return true;
   }

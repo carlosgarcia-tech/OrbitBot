@@ -30,6 +30,7 @@ export class ImgurCommand extends Command {
   /** Uploads legitimately exceed the 30s default pipeline timeout. */
   timeout = 180000;
   parallelizable = true;
+  heavy = true;
   description = 'Sube una imagen a imgur y comparte el link';
   category = CommandCategory.MEDIA;
   aliases = ['imgur'];

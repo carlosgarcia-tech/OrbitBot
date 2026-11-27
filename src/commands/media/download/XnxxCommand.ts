@@ -25,6 +25,7 @@ export class XnxxCommand extends Command {
   /** Media downloads legitimately exceed the 30s default pipeline timeout. */
   timeout = 180000;
   parallelizable = true;
+  heavy = true;
   description = 'Descarga video de XNXX';
   category = CommandCategory.MEDIA;
   aliases = [];

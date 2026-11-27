@@ -242,10 +242,11 @@ export class WhatsAppClient {
     this.maintenanceTimer = setInterval(
       () => {
         const queueStats = this.messageProcessor.getStats();
-        const totalQueued = queueStats.sequentialQueued + queueStats.parallelQueued;
+        const totalQueued =
+          queueStats.sequentialQueued + queueStats.parallelQueued + queueStats.heavyQueued;
         if (totalQueued > 20)
           logger.warn(
-            `⚠️ Cola: ${totalQueued} mensajes pendientes (seq: ${queueStats.sequentialQueued}, par: ${queueStats.parallelQueued})`,
+            `⚠️ Cola: ${totalQueued} mensajes pendientes (seq: ${queueStats.sequentialQueued}, par: ${queueStats.parallelQueued}, heavy: ${queueStats.heavyQueued})`,
           );
       },
       5 * 60 * 1000,
@@ -260,7 +261,8 @@ export class WhatsAppClient {
         : 0;
     const queueStats = this.messageProcessor.getStats();
     const cacheStats = cacheManager.getStats();
-    const totalQueued = queueStats.sequentialQueued + queueStats.parallelQueued;
+    const totalQueued =
+      queueStats.sequentialQueued + queueStats.parallelQueued + queueStats.heavyQueued;
     logger.info(
       `${this.stats.messagesReceived} recv | ` +
         `${this.stats.commandsExecuted} cmds | ` +

@@ -347,8 +347,8 @@ export class StickerService {
   }
 
   async imageToSticker(buffer: Buffer): Promise<Buffer> {
-    const tempInput = join(StickerService.TEMP_DIR, `input-${Date.now()}.png`);
-    const tempOutput = join(StickerService.TEMP_DIR, `output-${Date.now()}.webp`);
+    const tempInput = join(StickerService.TEMP_DIR, `input-${randomUUID()}.png`);
+    const tempOutput = join(StickerService.TEMP_DIR, `output-${randomUUID()}.webp`);
     try {
       writeFileSync(tempInput, buffer);
       await this.ffmpegImageProcess(tempInput, tempOutput);
@@ -460,8 +460,8 @@ export class StickerService {
       image.scaleToFit({ w: StickerService.STICKER_SIZE, h: StickerService.STICKER_SIZE });
     }
 
-    const tempInput = join(StickerService.TEMP_DIR, `jimp-${Date.now()}.png`);
-    const tempOutput = join(StickerService.TEMP_DIR, `jimp-${Date.now()}.webp`);
+    const tempInput = join(StickerService.TEMP_DIR, `jimp-${randomUUID()}.png`);
+    const tempOutput = join(StickerService.TEMP_DIR, `jimp-${randomUUID()}.webp`);
 
     try {
       const pngBuffer = await image.getBuffer('image/png');
@@ -488,10 +488,13 @@ export class StickerService {
     maxBytes = StickerService.MAX_VIDEO_STICKER_BYTES,
   ): Promise<Buffer> {
     const type = await this.getFileType(buffer);
-    const tempInput = join(StickerService.TEMP_DIR, `video-${Date.now()}.${type?.ext || 'mp4'}`);
+    const tempInput = join(StickerService.TEMP_DIR, `video-${randomUUID()}.${type?.ext || 'mp4'}`);
     const outputs: string[] = [];
     const encode = async (fps: number, quality: number, length: number): Promise<Buffer> => {
-      const output = join(StickerService.TEMP_DIR, `sticker-${Date.now()}-${outputs.length}.webp`);
+      const output = join(
+        StickerService.TEMP_DIR,
+        `sticker-${randomUUID()}-${outputs.length}.webp`,
+      );
       outputs.push(output);
       await this.ffmpegVideoProcess(tempInput, output, fps, quality, length);
       return readFileSync(output);

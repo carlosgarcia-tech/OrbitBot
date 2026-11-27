@@ -27,6 +27,7 @@ export class APKCommand extends Command {
   timeout = 180000;
   /** Independent network downloads: safe to run concurrently. */
   parallelizable = true;
+  heavy = true;
   description = 'Busca aplicaciones Android';
   category = CommandCategory.MEDIA;
   aliases = ['app', 'apksearch'];

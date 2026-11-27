@@ -23,7 +23,6 @@ export class DiceCommand extends Command {
   usage = '!dice <1-6> <cantidad>';
   examples = ['!dice 6 500', '!dados 3 100'];
   cooldown = 3000;
-  parallelizable = true;
 
   async execute(ctx: MessageContext): Promise<void> {
     const choiceStr = ctx.args[0];

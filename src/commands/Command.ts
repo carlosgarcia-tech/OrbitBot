@@ -20,6 +20,8 @@ export abstract class Command implements ICommand {
   examples?: string[] = [];
   cooldown?: number = 3000;
   parallelizable?: boolean = false;
+  /** Long-running work (downloads, ffmpeg) with a smaller concurrency cap. */
+  heavy?: boolean = false;
   enabled?: boolean = true;
   nsfw?: boolean = false;
 

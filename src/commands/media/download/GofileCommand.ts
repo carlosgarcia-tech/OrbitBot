@@ -30,6 +30,7 @@ export class GofileCommand extends Command {
   /** Uploads legitimately exceed the 30s default pipeline timeout. */
   timeout = 180000;
   parallelizable = true;
+  heavy = true;
   description = 'Sube un archivo a gofile.io y comparte el link';
   category = CommandCategory.MEDIA;
   aliases = ['gofile'];

@@ -40,6 +40,12 @@ export interface ICommand {
    * (economy, levels, moderation) must stay sequential to avoid lost updates.
    */
   parallelizable?: boolean;
+  /**
+   * Marks a long-running command (downloads, ffmpeg) that gets its own smaller
+   * concurrency cap. Implies parallel execution; takes precedence over
+   * `parallelizable` when both are set.
+   */
+  heavy?: boolean;
   /** False disables the command globally; it is never resolved or executed. */
   enabled?: boolean;
   /**

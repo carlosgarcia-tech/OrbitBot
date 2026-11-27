@@ -47,6 +47,7 @@ export class YtMp4Command extends Command {
   timeout = 180000;
   /** Independent network downloads: safe to run concurrently. */
   parallelizable = true;
+  heavy = true;
   description = 'Download YouTube video as MP4';
   category = CommandCategory.MEDIA;
   aliases = ['ytv', 'ytvideo', 'video'];

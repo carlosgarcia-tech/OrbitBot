@@ -25,7 +25,6 @@ export class CoinflipCommand extends Command {
   usage = '!coinflip <heads|tails> <amount>';
   examples = ['!cf heads 500', '!coinflip tails 1000'];
   cooldown = 5000;
-  parallelizable = true;
 
   async execute(ctx: MessageContext): Promise<void> {
     const rawChoice = ctx.args[0]?.toLowerCase();

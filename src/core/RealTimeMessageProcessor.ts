@@ -3,17 +3,19 @@
  *
  * Concurrency controller for inbound message handling.
  *
- * Two queues are kept instead of one because WhatsApp traffic has two distinct
- * concurrency requirements:
+ * Three queues are kept because inbound traffic has three distinct concurrency
+ * requirements:
  *
- * - **Sequential** messages (most commands, anything mutating shared state such
- *   as the economy) run strictly one at a time, in FIFO arrival order.
- * - **Parallelizable** messages (read-only lookups, marked by the command's
- *   `parallelizable` flag) run with a small fixed cap so a burst cannot saturate
- *   the event loop or trip WhatsApp's rate limits.
+ * - **Sequential** (default): commands that mutate shared state (economy,
+ *   levels, moderation) run strictly one at a time, in FIFO arrival order.
+ * - **Parallel** (`parallelizable`): read-only lookups and light I/O run with a
+ *   small fixed cap so a burst cannot saturate the event loop or trip
+ *   WhatsApp's rate limits.
+ * - **Heavy** (`heavy`): downloads and ffmpeg get a smaller cap of their own,
+ *   so two long jobs cannot occupy every parallel slot and starve `!ping`.
  *
- * It also acts as an in-flight deduplicator: a message ID already being handled
- * is rejected outright, so a reconnect that re-delivers the same message cannot
+ * It also acts as a deduplicator: a message ID already queued or running is
+ * rejected outright, so a reconnect that re-delivers the same message cannot
  * execute its command twice.
  *
  * Emits: `processed` (id) after each success, `error` (id, error) on failure.
@@ -28,63 +30,72 @@
 
 import { EventEmitter } from 'events';
 
+/** Concurrency class of a message. */
+export type MessageLane = 'sequential' | 'parallel' | 'heavy';
+
+/** Read-only work: 5 keeps a burst from saturating a small VPS/Termux. */
+const PARALLEL_MAX = 5;
+/** Downloads and ffmpeg: two at a time is the most a basic VPS handles well. */
+const HEAVY_MAX = 2;
+
 /** One unit of work waiting to run. */
 interface QueuedMessage {
   id: string;
   handler: () => Promise<void>;
-  parallel?: boolean;
+}
+
+/** Capped FIFO lane shared by the parallel and heavy classes. */
+interface CappedLane {
+  queue: QueuedMessage[];
+  active: number;
+  max: number;
 }
 
 export class RealTimeMessageProcessor extends EventEmitter {
-  /** IDs currently executing, used to reject duplicate submissions. */
+  /** IDs currently executing, used by the stats snapshot. */
   private processing = new Set<string>();
+  /** IDs queued or executing, used to reject duplicate submissions. */
+  private pending = new Set<string>();
   private sequentialQueue: QueuedMessage[] = [];
-  private parallelQueue: QueuedMessage[] = [];
+  private readonly parallelLane: CappedLane = { queue: [], active: 0, max: PARALLEL_MAX };
+  private readonly heavyLane: CappedLane = { queue: [], active: 0, max: HEAVY_MAX };
   /** Guard flag preventing a second sequential drain loop from starting. */
   private isProcessingSequential = false;
-  private maxParallel = 5;
-  private activeParallel = 0;
 
   /**
    * Enqueues a message handler on the queue matching its concurrency class.
    *
-   * @param messageId Dedup key; a second submission while in flight is ignored.
+   * @param messageId Dedup key; a second submission while queued or running is ignored.
    * @param handler Work to run once a slot is available.
-   * @param parallel Route to the capped parallel queue instead of sequential.
-   * @returns False when the message ID is already in flight, true otherwise.
+   * @param lane Concurrency class; defaults to the strict sequential lane.
+   * @returns False when the message ID is already pending, true otherwise.
    */
   async process(
     messageId: string,
     handler: () => Promise<void>,
-    parallel = false,
+    lane: MessageLane = 'sequential',
   ): Promise<boolean> {
-    if (this.processing.has(messageId)) return false;
-    if (parallel) {
-      this.parallelQueue.push({ id: messageId, handler, parallel: true });
+    if (this.pending.has(messageId)) return false;
+    this.pending.add(messageId);
+
+    if (lane === 'sequential') {
+      this.sequentialQueue.push({ id: messageId, handler });
+      setImmediate(() => void this.processSequentialQueue());
     } else {
-      this.sequentialQueue.push({ id: messageId, handler, parallel: false });
+      const target = lane === 'heavy' ? this.heavyLane : this.parallelLane;
+      target.queue.push({ id: messageId, handler });
+      setImmediate(() => void this.drainLane(target));
     }
-    // Schedule per-item instead of "drain the whole queue" calls: a burst of
-    // messages used to call processParallelQueue() repeatedly while it was
-    // still awaiting, spawning N+1 concurrent loops that each shifted an item
-    // off the queue and broke the maxParallel cap (and FIFO order).
-    setImmediate(() => {
-      if (parallel) {
-        void this.processParallelQueue();
-      } else {
-        void this.processSequentialQueue();
-      }
-    });
     return true;
   }
 
-  private async processParallelQueue(): Promise<void> {
-    // One item per call: the finally block re-invokes this when a slot frees
-    // up, so the concurrency cap can never be exceeded.
-    if (this.activeParallel >= this.maxParallel || this.parallelQueue.length === 0) return;
-    const item = this.parallelQueue.shift();
-    if (!item) return;
-    this.activeParallel++;
+  /**
+   * Runs one queued item and reports its outcome through the emitter.
+   *
+   * Never rejects on a handler failure: the error is emitted instead, so the
+   * lane that owns the item can keep draining.
+   */
+  private async runItem(item: QueuedMessage): Promise<void> {
     this.processing.add(item.id);
     try {
       await item.handler();
@@ -93,9 +104,28 @@ export class RealTimeMessageProcessor extends EventEmitter {
       this.emit('error', item.id, error);
     } finally {
       this.processing.delete(item.id);
-      this.activeParallel--;
-      if (this.parallelQueue.length > 0) {
-        setImmediate(() => void this.processParallelQueue());
+      this.pending.delete(item.id);
+    }
+  }
+
+  /**
+   * Drains one capped lane, one item per call.
+   *
+   * The reschedule at the end runs only after the slot is released, so the cap
+   * can never be exceeded even when several items finish at once.
+   */
+  private async drainLane(lane: CappedLane): Promise<void> {
+    if (lane.active >= lane.max || lane.queue.length === 0) return;
+    const item = lane.queue.shift();
+    if (!item) return;
+
+    lane.active++;
+    try {
+      await this.runItem(item);
+    } finally {
+      lane.active--;
+      if (lane.queue.length > 0) {
+        setImmediate(() => void this.drainLane(lane));
       }
     }
   }
@@ -115,15 +145,7 @@ export class RealTimeMessageProcessor extends EventEmitter {
       while (this.sequentialQueue.length > 0) {
         const item = this.sequentialQueue.shift();
         if (!item) break;
-        this.processing.add(item.id);
-        try {
-          await item.handler();
-          this.emit('processed', item.id);
-        } catch (error) {
-          this.emit('error', item.id, error);
-        } finally {
-          this.processing.delete(item.id);
-        }
+        await this.runItem(item);
       }
     } finally {
       this.isProcessingSequential = false;
@@ -135,8 +157,11 @@ export class RealTimeMessageProcessor extends EventEmitter {
     return {
       processing: this.processing.size,
       sequentialQueued: this.sequentialQueue.length,
-      parallelQueued: this.parallelQueue.length,
-      activeParallel: this.activeParallel,
+      parallelQueued: this.parallelLane.queue.length,
+      heavyQueued: this.heavyLane.queue.length,
+      activeParallel: this.parallelLane.active,
+      activeHeavy: this.heavyLane.active,
+      pending: this.pending.size,
     };
   }
 }

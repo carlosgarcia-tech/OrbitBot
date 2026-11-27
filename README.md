@@ -32,7 +32,7 @@ Instead of a monolithic message handler, every incoming message passes through a
 
 ```mermaid
 flowchart TD
-    MSG([Incoming message]) --> RT[RealTimeMessageProcessor<br/>dedupe + sequential/parallel queues]
+    MSG([Incoming message]) --> RT[RealTimeMessageProcessor<br/>dedupe + sequential/parallel/heavy queues]
     RT --> G{Group guards}
     G -->|mute · orbit-toggle · antilink| STOP([Handled / dropped])
     G -->|pass| CTX[MessageContext<br/>prefix parsing + permission loading]
@@ -203,7 +203,7 @@ OrbitBot/
 │   │   ├── MessageContext.ts   #   per-message typed context
 │   │   ├── CommandRegistry.ts  #   name/alias maps + lazy plugin resolution
 │   │   ├── PluginLoader.ts     #   auto-discovery of command files
-│   │   ├── RealTimeMessageProcessor.ts  # dedupe + sequential/parallel queues
+│   │   ├── RealTimeMessageProcessor.ts  # dedupe + sequential/parallel/heavy queues
 │   │   ├── MediaGroupBuffer.ts #   debounced multi-image grouping for img2pdf
 │   │   └── WASocketFactory.ts  #   single source of truth for Baileys options
 │   │

@@ -25,6 +25,7 @@ export class SpotifyCommand extends Command {
   timeout = 180000;
   /** Independent network downloads: safe to run concurrently. */
   parallelizable = true;
+  heavy = true;
   description = 'Descarga música de Spotify';
   category = CommandCategory.MEDIA;
   aliases = ['sp', 'spotdl', 'spotifydl'];

@@ -46,6 +46,7 @@ export class InstagramCommand extends Command {
   timeout = 180000;
   /** Independent network downloads: safe to run concurrently. */
   parallelizable = true;
+  heavy = true;
   description = 'Download Instagram Reels, posts and stories';
   category = CommandCategory.MEDIA;
   aliases = ['ig', 'insta', 'reel'];
