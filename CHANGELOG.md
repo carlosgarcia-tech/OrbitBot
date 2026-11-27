@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.17] - 2026-11-26
+
+### Changed
+
+- Slow commands no longer hold up the fast ones. The message processor now keeps three lanes: sequential for state-changing commands, parallel (5 at a time) for read-only ones, and a new heavy lane (2 at a time) for downloads and ffmpeg. All 21 download commands and `!sticker` run in the heavy lane, so a running download can no longer fill the parallel lane and leave `!ping` waiting. The periodic queue log and the panel metrics report each lane separately.
+- AI mention replies no longer block the bot: `handleMention` runs detached with at most two Groq requests in flight, so answering a mention in one group does not delay commands anywhere else.
+
+### Fixed
+
+- `!blackjack`, `!coinflip`, `!dice` and `!roulette` are sequential again. They updated the player's balance through `addMoney`/`removeMoney` (a read-modify-write) while marked parallelizable, so two simultaneous bets from the same user could lose a balance update.
+- Concurrent sticker conversions no longer share temp files. Their filenames used `Date.now()`, so two conversions starting in the same millisecond overwrote each other's source and one deleted files still in use.
+
 ## [8.2.16] - 2026-11-26
 
 ### Fixed
