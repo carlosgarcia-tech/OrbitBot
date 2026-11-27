@@ -5,6 +5,19 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.18] - 2026-11-27
+
+### Added
+
+- YouTube downloads are cached on disk (`data/youtube_cache`): audio and video keyed by `videoId` (plus quality for video), 24 h TTL and a 1 GB budget (250 MB on Termux) with oldest-first eviction. Asking for the same video twice serves a local copy instead of running `yt-dlp` again. Every request gets its own temp copy, so the download commands can keep deleting what they send without emptying the cache.
+
+### Changed
+
+- All downloaders share a global limit of two external processes. A third `yt-dlp`/`ffmpeg` waits in FIFO order instead of competing for CPU, which is what a basic VPS and a phone running Termux can sustain, and the limit is honest because the slot is taken before the process is spawned.
+- `!sticker` / `!s` refuses a video longer than 10 s before downloading it, using the duration WhatsApp already reports. Before, it downloaded the whole file, trimmed it to 10 s and often timed out on the way.
+- Download errors keep only the last 8 KB of `yt-dlp` stderr, so a noisy run can no longer grow that string without bound. stdout is still returned whole because metadata calls parse it as JSON.
+- The TikTok disk cache moved into a shared `MediaFileCache` (same TTL/eviction behaviour) so YouTube reuses it instead of duplicating the logic; cache keys that could escape the cache directory are rejected.
+
 ## [8.2.17] - 2026-11-26
 
 ### Changed
