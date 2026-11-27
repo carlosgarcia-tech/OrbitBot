@@ -5,6 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.16] - 2026-11-26
+
+### Fixed
+
+- `!saudio` no longer stretches short clips: the animated visual now lasts exactly as long as the audio instead of being cut to the whole second reported by WhatsApp, and the reported duration rounds to the nearest second instead of always up. Sub-second audio stays untouched (the wire `seconds` field is an integer, so it can only report 1); a 1.2s clip is no longer shown and animated as 2s.
+
 ## [8.2.15] - 2026-11-26
 
 ### Fixed

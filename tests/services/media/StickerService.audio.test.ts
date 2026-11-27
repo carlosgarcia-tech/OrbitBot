@@ -25,6 +25,9 @@ let image: Buffer;
 let shortAudio: Buffer;
 let longAudio: Buffer;
 let mp3Audio: Buffer;
+let tinyAudio: Buffer;
+let barelyAudio: Buffer;
+let shortVideo: Buffer;
 
 /** Runs ffmpeg and throws with stderr when it fails. */
 function ff(args: string[]): void {
@@ -168,6 +171,23 @@ beforeAll(() => {
   ff(['-f', 'lavfi', '-i', 'sine=frequency=880:duration=65', '-c:a', 'libopus', longPath]);
   ff(['-f', 'lavfi', '-i', 'sine=frequency=660:duration=2', '-c:a', 'libmp3lame', mp3Path]);
 
+  const tinyPath = join(dir, 'tiny.ogg');
+  const barelyPath = join(dir, 'barely.ogg');
+  const shortVideoPath = join(dir, 'short-video.mp4');
+  ff(['-f', 'lavfi', '-i', 'sine=frequency=520:duration=0.4', '-c:a', 'libopus', tinyPath]);
+  ff(['-f', 'lavfi', '-i', 'sine=frequency=520:duration=1.2', '-c:a', 'libopus', barelyPath]);
+  ff([
+    '-f',
+    'lavfi',
+    '-i',
+    'testsrc=duration=3:size=160x160:rate=12',
+    '-c:v',
+    'libx264',
+    '-pix_fmt',
+    'yuv420p',
+    shortVideoPath,
+  ]);
+
   withAudio = readFileSync(withAudioPath);
   longVideo = readFileSync(longVideoPath);
   heavyVideo = readFileSync(heavyVideoPath);
@@ -176,6 +196,9 @@ beforeAll(() => {
   shortAudio = readFileSync(shortPath);
   longAudio = readFileSync(longPath);
   mp3Audio = readFileSync(mp3Path);
+  tinyAudio = readFileSync(tinyPath);
+  barelyAudio = readFileSync(barelyPath);
+  shortVideo = readFileSync(shortVideoPath);
 }, 60_000);
 
 afterAll(() => {
@@ -236,6 +259,31 @@ describe('StickerService.createAudioSticker', () => {
     expect(parts.width).toBe(512);
     expect(parts.height).toBe(512);
   }, 30_000);
+
+  it('keeps sub-second audio intact and reports the wire minimum', async () => {
+    const parts = await service.createAudioSticker({ visual: image, audio: tinyAudio });
+
+    const audioPath = join(dir, 'probe-tiny.ogg');
+    writeFileSync(audioPath, parts.audio);
+    expect(parts.seconds).toBe(1); // uint32 seconds cannot express 0.4
+    expect(duration(audioPath)).toBeLessThan(0.7); // no silence padding
+  }, 30_000);
+
+  it('cuts the animated visual to the real audio length', async () => {
+    const parts = await service.createAudioSticker({ visual: shortVideo, audio: tinyAudio });
+
+    expect(parts.isAnimated).toBe(true);
+    // Old ceil turned 0.4s into a 1s visual, which looked looped.
+    expect(await stickerSeconds(parts.sticker)).toBeLessThan(0.7);
+    expect(parts.seconds).toBe(1);
+  }, 60_000);
+
+  it('does not inflate a barely-over-one-second clip to two', async () => {
+    const parts = await service.createAudioSticker({ visual: shortVideo, audio: barelyAudio });
+
+    expect(parts.seconds).toBe(1); // rounds to the closest second, not up
+    expect(await stickerSeconds(parts.sticker)).toBeLessThan(1.5);
+  }, 60_000);
 
   it('uses supplied audio even when the video has none', async () => {
     const parts = await service.createAudioSticker({ visual: silent, audio: mp3Audio });

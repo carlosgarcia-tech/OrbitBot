@@ -32,7 +32,7 @@ export interface AudioStickerParts {
   sticker: Buffer;
   /** Mono 16 kHz ogg/opus track. */
   audio: Buffer;
-  /** Rounded-up audio duration, shown by WhatsApp. */
+  /** Audio duration in whole seconds, shown by WhatsApp (uint32: never below 1). */
   seconds: number;
   /** 64-bar waveform for the audio message. */
   waveform: Buffer;
@@ -132,12 +132,14 @@ export class StickerService {
       if (!(await this.hasAudioTrack(src))) throw new Error('NO_AUDIO');
       await this.ffmpegOpusProcess(src, out, maxSeconds);
       const audio = readFileSync(out);
-      const { seconds, waveform } = await this.readAudioExtras(out, maxSeconds);
+      const { seconds, duration, waveform } = await this.readAudioExtras(out, maxSeconds);
 
+      // The visual follows the real track, not the whole-second metadata:
+      // a 1.2s clip would otherwise animate for 2s and look looped.
       const sticker = isVideo
         ? await this.videoToSticker(
             opts.visual,
-            Math.min(seconds, StickerService.AUDIO_STICKER_VISUAL_MAX_SECONDS),
+            Math.min(duration, StickerService.AUDIO_STICKER_VISUAL_MAX_SECONDS),
             StickerService.AUDIO_STICKER_MAX_BYTES - audio.length,
           )
         : await this.imageToSticker(opts.visual);
@@ -160,14 +162,24 @@ export class StickerService {
     }
   }
 
-  /** Duration + 64-bar waveform WhatsApp draws for the attached clip. */
+  /**
+   * Duration + 64-bar waveform WhatsApp draws for the attached clip.
+   *
+   * `duration` is the real length (fractional) and drives the animated
+   * visual. `seconds` is the wire `AudioMessage.seconds`: a uint32, so a
+   * sub-second clip can only report 1 and rounding avoids inflating a 1.2s
+   * clip to 2s.
+   */
   private async readAudioExtras(
     path: string,
     maxSeconds: number,
-  ): Promise<{ seconds: number; waveform: Buffer }> {
-    const [duration, pcm] = await Promise.all([this.probeDuration(path), this.readPcm(path)]);
-    const seconds = duration > 0 ? Math.min(Math.ceil(duration), Math.ceil(maxSeconds)) : 5;
-    return { seconds, waveform: StickerService.waveformFromPcm(pcm) };
+  ): Promise<{ seconds: number; duration: number; waveform: Buffer }> {
+    const [probed, pcm] = await Promise.all([this.probeDuration(path), this.readPcm(path)]);
+    const waveform = StickerService.waveformFromPcm(pcm);
+    if (!(probed > 0)) return { seconds: 5, duration: 5, waveform };
+
+    const duration = Math.min(probed, maxSeconds);
+    return { seconds: Math.max(1, Math.round(duration)), duration, waveform };
   }
 
   private probeDuration(path: string): Promise<number> {
