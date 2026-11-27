@@ -19,6 +19,22 @@ import {
   InvalidURLError,
 } from '@/utils/errors.js';
 import { logError, logger } from '@/utils/logger.js';
+import { Semaphore } from '@/utils/Semaphore.js';
+
+/** A download attempt must not keep more than this much stderr in memory. */
+const MAX_STDERR_BYTES = 8 * 1024;
+
+/**
+ * At most two external processes run at once across every downloader. More
+ * saturates a basic VPS or a phone running Termux, and the queue is FIFO so
+ * no request is starved.
+ */
+const processSlots = new Semaphore(2);
+
+/** Keeps only the tail of a log: yt-dlp writes the real error last. */
+function keepTail(value: string, maxBytes: number): string {
+  return value.length > maxBytes ? value.slice(-maxBytes) : value;
+}
 
 export type DownloadSuccess = {
   filePath: string;
@@ -126,26 +142,47 @@ export class DownloadService {
     return right(url);
   }
 
+  /**
+   * Runs an external command with a timeout, at most two at a time globally.
+   *
+   * The slot is acquired before spawning, so a queued command's timeout only
+   * starts counting once its process exists.
+   *
+   * @param cmd Executable to run (never through a shell).
+   * @param args Arguments, passed as-is.
+   * @param timeout Kill the process after this many ms.
+   * @returns The process' stdout, which callers may parse as JSON.
+   */
   protected runCommand(cmd: string, args: string[], timeout: number = 90000): Promise<string> {
+    return processSlots.run(() => this.spawnCommand(cmd, args, timeout));
+  }
+
+  /**
+   * Spawns and collects one process.
+   *
+   * stdout is kept whole because metadata calls parse it as JSON; stderr is
+   * capped at its tail, which is all an error message needs.
+   */
+  private spawnCommand(cmd: string, args: string[], timeout: number): Promise<string> {
     return new Promise((resolve, reject) => {
-      const process = spawn(cmd, args);
+      const child = spawn(cmd, args);
       let stdout = '';
       let stderr = '';
 
       const timer = setTimeout(() => {
-        process.kill();
+        child.kill();
         reject(new Error('Command timeout'));
       }, timeout);
 
-      process.stdout.on('data', data => {
+      child.stdout.on('data', data => {
         stdout += data.toString();
       });
 
-      process.stderr.on('data', data => {
-        stderr += data.toString();
+      child.stderr.on('data', data => {
+        stderr = keepTail(stderr + data.toString(), MAX_STDERR_BYTES);
       });
 
-      process.on('close', code => {
+      child.on('close', code => {
         clearTimeout(timer);
         if (code === 0) {
           resolve(stdout);
@@ -154,7 +191,7 @@ export class DownloadService {
         }
       });
 
-      process.on('error', reject);
+      child.on('error', reject);
     });
   }
 

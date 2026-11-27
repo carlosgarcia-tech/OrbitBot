@@ -29,6 +29,13 @@ export const STICKER_BRANDING = {
   author: 'ʙʏ ᴄᴀʀʟᴏꜱ ɢ',
 } as const;
 
+/** Video stickers encode at most this many seconds; longer sources are refused. */
+const MAX_VIDEO_STICKER_SECONDS = 10;
+
+/** Shared by the pre-download check and the timeout fallback. */
+const VIDEO_TOO_LONG_MESSAGE =
+  '⏱️ El video es demasiado largo para convertirlo a tiempo. Intenta con uno de menos de 10 segundos.';
+
 /** Command handler for `!sticker`: Convert image/video to sticker. */
 export class StickerCommand extends Command {
   name = 'sticker';
@@ -63,6 +70,13 @@ export class StickerCommand extends Command {
           `✦ responde a una foto/video con *!sticker*\n` +
           `✩ videos cortitos, menos de 10 segundos ✩`,
       );
+      return;
+    }
+
+    // WhatsApp reports the duration on the message itself: refuse a long video
+    // before downloading it, instead of paying for the whole transfer.
+    if ((message.videoMessage?.seconds ?? 0) > MAX_VIDEO_STICKER_SECONDS) {
+      await ctx.reply(VIDEO_TOO_LONG_MESSAGE);
       return;
     }
 
@@ -126,7 +140,7 @@ function describeStickerError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
 
   if (message.includes('timed out')) {
-    return '⏱️ El video es demasiado largo para convertirlo a tiempo. Intenta con uno de menos de 10 segundos.';
+    return VIDEO_TOO_LONG_MESSAGE;
   }
   if (message.startsWith('FFmpeg video failed:')) {
     const reason = message.slice('FFmpeg video failed:'.length).trim().slice(0, 140);

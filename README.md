@@ -349,6 +349,15 @@ The old names (`.orbiton`, `.orbitoff`, `.orbitstatus`, `.boton`, `.botoff`, `.e
 | `LOG_LEVEL`               | `error` / `warn` / `info` / `debug`    | `info`       |
 | `NODE_ENV`                | `development` / `production`           | `production` |
 
+### YouTube downloads
+
+`!ytmp3` / `!ytmp4` keep finished audio and video in `data/youtube_cache`, keyed
+by video id (plus quality for video). A repeated request inside the 24 h TTL is
+served from disk instead of running `yt-dlp` again, and the cache keeps itself
+under 1 GB (250 MB on Termux) by evicting the oldest files. Every downloader
+shares a limit of two external processes at a time, so a third waits its turn
+instead of competing for CPU.
+
 ### TikTok downloads
 
 `!tiktok` resolves metadata and downloads through [tikwm.com](https://www.tikwm.com)
