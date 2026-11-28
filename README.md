@@ -240,10 +240,10 @@ OrbitBot/
 ### Quick start (script)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/carlosgarcia-tech/OrbitBot/main/OrbitBot.sh | bash -s v8.2.17
+curl -fsSL https://raw.githubusercontent.com/carlosgarcia-tech/OrbitBot/main/OrbitBot.sh | bash -s v8.2.18
 ```
 
-Installs Node.js, FFmpeg and other system dependencies, clones the repo, installs npm dependencies, applies the `whatsapp-rust-bridge` patch and creates a starter `.env`. Pass a version (`v8.2.17` in the example) to pin the install; without it, the script falls back to the latest published GitHub release. You'll still need to fill in your credentials in `.env` (see Configuration below).
+Installs Node.js, FFmpeg and other system dependencies, clones the repo, installs npm dependencies, applies the `whatsapp-rust-bridge` patch and creates a starter `.env`. Pass a version (`v8.2.18` in the example) to pin the install; without it, the script falls back to the latest published GitHub release. You'll still need to fill in your credentials in `.env` (see Configuration below).
 
 ### Termux (Android)
 
@@ -348,6 +348,15 @@ The old names (`.orbiton`, `.orbitoff`, `.orbitstatus`, `.boton`, `.botoff`, `.e
 | `MAX_COMMANDS_PER_MINUTE` | Per-user command rate                  | `10`         |
 | `LOG_LEVEL`               | `error` / `warn` / `info` / `debug`    | `info`       |
 | `NODE_ENV`                | `development` / `production`           | `production` |
+
+### YouTube downloads
+
+`!ytmp3` / `!ytmp4` keep finished audio and video in `data/youtube_cache`, keyed
+by video id (plus quality for video). A repeated request inside the 24 h TTL is
+served from disk instead of running `yt-dlp` again, and the cache keeps itself
+under 1 GB (250 MB on Termux) by evicting the oldest files. Every downloader
+shares a limit of two external processes at a time, so a third waits its turn
+instead of competing for CPU.
 
 ### TikTok downloads
 

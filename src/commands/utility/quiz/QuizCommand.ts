@@ -75,6 +75,8 @@ export class QuizCommand extends Command {
   name = 'quiz';
   description = 'Modo estudio — responde preguntas y gana monedas';
   category = CommandCategory.UTILITY;
+  // Mutates shared user state: keep on the sequential lane.
+  parallelizable = false;
   aliases = ['q', 'estudio', 'study'];
   cooldown = 3000;
   contexts = [CommandContext.GROUP];

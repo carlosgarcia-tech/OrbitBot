@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { logError, logger } from '@/utils/logger.js';
 import { JsonFileStore } from '@/utils/JsonFileStore.js';
+import { MediaFileCache } from './MediaFileCache.js';
 
 /**
  * TikTokGuard.ts
@@ -174,109 +175,6 @@ export class TikTokQueue {
       () => undefined,
     );
     return result;
-  }
-}
-
-/**
- * File cache for downloaded TikTok media, keyed by video id, inside a
- * persistent directory (/app/data/tiktok_cache in production — the
- * orbit_database volume — so cached items survive container restarts).
- * TTL by file mtime; total-size limit with oldest-first eviction.
- */
-export class TikTokFileCache {
-  private readonly dir: string;
-  private readonly ttlMs: number;
-  private readonly maxTotalBytes: number;
-  private readonly now: () => number;
-
-  constructor(options: {
-    dir: string;
-    ttlMs?: number;
-    maxTotalBytes?: number;
-    now?: () => number;
-  }) {
-    this.dir = options.dir;
-    this.ttlMs = options.ttlMs ?? 6 * 60 * 60 * 1000;
-    this.maxTotalBytes = options.maxTotalBytes ?? 500 * 1024 * 1024;
-    this.now = options.now ?? Date.now;
-  }
-
-  /** Directory the cache stores into (also used to identify cached files). */
-  get directory(): string {
-    return this.dir;
-  }
-
-  /** Cached file path for the video id, or null on miss/TTL/expiry. */
-  get(videoId: string): string | null {
-    const file = this.pathFor(videoId);
-    try {
-      const stats = fs.statSync(file);
-      if (this.now() - stats.mtimeMs > this.ttlMs) return null;
-      return file;
-    } catch {
-      return null;
-    }
-  }
-
-  /** Moves a freshly downloaded file into the cache and evicts if needed. */
-  store(videoId: string, sourcePath: string): void {
-    try {
-      fs.mkdirSync(this.dir, { recursive: true });
-      const target = this.pathFor(videoId);
-      try {
-        fs.renameSync(sourcePath, target);
-      } catch (error) {
-        // Different filesystems (e.g. tests with a tmpdir cache) cannot rename.
-        if ((error as NodeJS.ErrnoException).code === 'EXDEV') {
-          fs.copyFileSync(sourcePath, target);
-          fs.unlinkSync(sourcePath);
-        } else {
-          throw error;
-        }
-      }
-      // Touch mtime to now: the TTL counts from the moment it was cached.
-      const nowMs = this.now();
-      fs.utimesSync(target, nowMs / 1000, nowMs / 1000);
-      this.evictIfNeeded(target);
-    } catch (error) {
-      // Cache is best-effort: a failed store leaves the download usable.
-      logError('TikTokFileCache.store', error);
-    }
-  }
-
-  private pathFor(videoId: string): string {
-    return path.join(this.dir, videoId);
-  }
-
-  private evictIfNeeded(protectedPath: string): void {
-    let entries: fs.Dirent[];
-    try {
-      entries = fs.readdirSync(this.dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    const files = entries
-      .filter(e => e.isFile())
-      .map(e => {
-        const file = path.join(this.dir, e.name);
-        try {
-          return { file, size: fs.statSync(file).size, mtime: fs.statSync(file).mtimeMs };
-        } catch {
-          return { file, size: 0, mtime: 0 };
-        }
-      });
-    let total = files.reduce((sum, f) => sum + f.size, 0);
-    if (total <= this.maxTotalBytes) return;
-    const deletable = files.filter(f => f.file !== protectedPath).sort((a, b) => a.mtime - b.mtime);
-    for (const entry of deletable) {
-      if (total <= this.maxTotalBytes) break;
-      try {
-        fs.unlinkSync(entry.file);
-        total -= entry.size;
-      } catch {
-        // already gone; keep evicting
-      }
-    }
   }
 }
 
@@ -498,7 +396,7 @@ export function envNumber(name: string, fallback: number): number {
  */
 export class TikTokGuardService {
   private readonly queue: TikTokQueue;
-  private readonly cache: TikTokFileCache;
+  private readonly cache: MediaFileCache;
   private readonly breaker: TikTokBreaker;
   private readonly dedupe = createInFlightDedupe();
   private readonly runYtDlp: (args: string[], timeout: number) => Promise<string>;
@@ -549,7 +447,7 @@ export class TikTokGuardService {
       sleep: options.sleep,
       random: options.random,
     });
-    this.cache = new TikTokFileCache({
+    this.cache = new MediaFileCache({
       dir: options.cacheDir ?? './data/tiktok_cache',
       ttlMs: options.ttlMs ?? envNumber('TIKTOK_CACHE_TTL_MS', 6 * 60 * 60 * 1000),
       maxTotalBytes: options.maxTotalBytes ?? envNumber('TIKTOK_CACHE_MAX_MB', 500) * 1024 * 1024,

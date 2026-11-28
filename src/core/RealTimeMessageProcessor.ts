@@ -6,11 +6,11 @@
  * Three queues are kept because inbound traffic has three distinct concurrency
  * requirements:
  *
- * - **Sequential** (default): commands that mutate shared state (economy,
- *   levels, moderation) run strictly one at a time, in FIFO arrival order.
- * - **Parallel** (`parallelizable`): read-only lookups and light I/O run with a
- *   small fixed cap so a burst cannot saturate the event loop or trip
- *   WhatsApp's rate limits.
+ * - **Sequential**: commands that mutate shared state (economy, levels,
+ *   moderation, group settings) run strictly one at a time, in FIFO order.
+ * - **Parallel** (the default for commands that share no state): read-only
+ *   lookups and light I/O run with a small fixed cap so a burst cannot
+ *   saturate the event loop or trip WhatsApp's rate limits.
  * - **Heavy** (`heavy`): downloads and ffmpeg get a smaller cap of their own,
  *   so two long jobs cannot occupy every parallel slot and starve `!ping`.
  *

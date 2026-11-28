@@ -26,6 +26,7 @@ export class ToGifAudCommand extends Command {
   name = 'togifaud';
   description = 'Convertir video a GIF';
   category = CommandCategory.MEDIA;
+  heavy = true;
   aliases = ['togif'];
   usage = '!togifaud (responde a video)';
   examples = ['!togifaud'];

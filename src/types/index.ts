@@ -35,9 +35,11 @@ export interface ICommand {
    */
   timeout?: number;
   /**
-   * Marks the command as safe to run concurrently.
-   * Only set this for read-only commands: anything mutating shared state
-   * (economy, levels, moderation) must stay sequential to avoid lost updates.
+   * Overrides the lane chosen from the command category.
+   *
+   * Undefined (the default) runs the command in the parallel lane unless its
+   * category mutates shared state. Set `false` for a read-mostly category
+   * whose command still does read-modify-write on shared data.
    */
   parallelizable?: boolean;
   /**

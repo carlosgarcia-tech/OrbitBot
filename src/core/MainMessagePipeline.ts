@@ -53,6 +53,7 @@ import { chatSummaryService } from '@/services/chat/ChatSummaryService.js';
 import { PinVerificationMiddleware } from '@/middlewares/PinVerificationMiddleware.js';
 import { mediaMessageCache } from '@/services/media/MediaMessageCache.js';
 import type { RealTimeMessageProcessor, MessageLane } from './RealTimeMessageProcessor.js';
+import { laneForCommand } from './CommandLane.js';
 
 /** Entry in the middleware chain; see Client.ts for the field semantics. */
 interface MiddlewareConfig {
@@ -242,11 +243,13 @@ export class MainMessagePipeline {
 
   /**
    * Concurrency class for this message. Heavy commands (downloads, ffmpeg)
-   * get their own smaller cap; read-only commands share the parallel lane;
-   * everything else stays sequential so state mutations never race.
+   * get their own smaller cap; commands sharing no state run in the parallel
+   * lane; only the state-mutating categories stay sequential.
    *
-   * Lazy commands that are not registered yet fall back to sequential; after
-   * their first use they are registered and take the right lane.
+   * Non-command traffic keeps the sequential lane: its handlers are short
+   * guard checks, so it cannot hold up a command that now runs in parallel.
+   * Lazy commands that are not registered yet also fall back to sequential;
+   * after their first use they are registered and take the right lane.
    */
   private commandLane(message: WAMessage): MessageLane {
     const text = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
@@ -257,8 +260,7 @@ export class MainMessagePipeline {
     const commandName = commandRest.split(' ')[0]?.toLowerCase() ?? '';
     const fullCommandName = commandRest.toLowerCase();
     const cmd = commandRegistry.get(fullCommandName) || commandRegistry.get(commandName);
-    if (cmd?.heavy) return 'heavy';
-    return cmd?.parallelizable ? 'parallel' : 'sequential';
+    return laneForCommand(cmd);
   }
 
   /**

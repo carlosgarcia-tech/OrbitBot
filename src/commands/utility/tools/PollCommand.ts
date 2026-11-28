@@ -18,6 +18,8 @@ export class PollCommand extends Command {
   name = 'encuesta';
   description = 'Crea y gestiona encuestas con múltiples opciones.';
   category = CommandCategory.UTILITY;
+  // Mutates shared user state: keep on the sequential lane.
+  parallelizable = false;
   // No alias 'votar': it is the name of VotarPoesiaCommand (voting for poems).
   aliases = ['poll', 'votacion'];
   usage = '!encuesta "Pregunta" "Op1" "Op2" "Op3..."';

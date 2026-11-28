@@ -19,7 +19,8 @@ export abstract class Command implements ICommand {
   usage?: string;
   examples?: string[] = [];
   cooldown?: number = 3000;
-  parallelizable?: boolean = false;
+  /** Undefined = decide by category; see `laneForCommand`. */
+  parallelizable?: boolean;
   /** Long-running work (downloads, ffmpeg) with a smaller concurrency cap. */
   heavy?: boolean = false;
   enabled?: boolean = true;

@@ -22,6 +22,7 @@ export class SpotifyplaylistCommand extends Command {
   name = 'spotifyplaylist';
   description = 'Descarga playlists completas de Spotify';
   category = CommandCategory.MEDIA;
+  heavy = true;
   aliases = ['spplaylist', 'sp-list'];
   cooldown = 180000;
   contexts = [CommandContext.BOTH];

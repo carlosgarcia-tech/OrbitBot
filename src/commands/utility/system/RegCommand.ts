@@ -16,6 +16,8 @@ export class RegCommand extends Command {
   name = 'reg';
   description = 'Regístrate para usar el bot';
   category = CommandCategory.UTILITY;
+  // Mutates shared user state: keep on the sequential lane.
+  parallelizable = false;
   aliases = ['registrar', 'register', 'registro'];
   usage = '!reg nombre.edad';
   examples = ['!reg Carlos.25', '!reg Juan.18'];

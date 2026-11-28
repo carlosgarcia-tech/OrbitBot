@@ -8,11 +8,7 @@ import {
   cleanCanonicalUrl,
   resolveCanonicalUrl,
 } from '../../../src/services/download/TikTokGuard.js';
-import {
-  TikTokQueue,
-  TikTokFileCache,
-  createInFlightDedupe,
-} from '../../../src/services/download/TikTokGuard.js';
+import { TikTokQueue, createInFlightDedupe } from '../../../src/services/download/TikTokGuard.js';
 import {
   TikTokBreaker,
   isTikTokBlockError,
@@ -193,87 +189,6 @@ describe('TikTokQueue', () => {
     ]);
     expect(positions[0]).toBe(1);
     expect(positions[1]).toBe(2);
-  });
-});
-
-describe('TikTokFileCache', () => {
-  let tmpDir: string;
-  let cacheDir: string;
-  let sourceDir: string;
-  let clock: number;
-
-  const writeSource = (name: string, content = 'x'.repeat(100)): string => {
-    const p = path.join(sourceDir, name);
-    fs.writeFileSync(p, content);
-    return p;
-  };
-
-  beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tiktok-cache-'));
-    cacheDir = path.join(tmpDir, 'cache');
-    sourceDir = path.join(tmpDir, 'source');
-    fs.mkdirSync(sourceDir, { recursive: true });
-    clock = Date.now();
-  });
-
-  afterEach(() => {
-    fs.rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  it('misses when empty', () => {
-    const cache = new TikTokFileCache({ dir: cacheDir, now: () => clock });
-    expect(cache.get('111')).toBeNull();
-  });
-
-  it('hits after storing, returning an existing file path', () => {
-    const cache = new TikTokFileCache({ dir: cacheDir, now: () => clock });
-    const source = writeSource('tiktok_1.mp4');
-    cache.store('111', source);
-    const cached = cache.get('111');
-    expect(cached).not.toBeNull();
-    expect(fs.existsSync(cached as string)).toBe(true);
-    expect(fs.statSync(cached as string).size).toBe(100);
-  });
-
-  it('misses once the TTL elapses (injectable clock)', () => {
-    let now = Date.now();
-    const cache = new TikTokFileCache({ dir: cacheDir, ttlMs: 60000, now: () => now });
-    cache.store('111', writeSource('tiktok_1.mp4'));
-    now += 61000;
-    expect(cache.get('111')).toBeNull();
-  });
-
-  it('misses when the cached file was deleted externally', () => {
-    const cache = new TikTokFileCache({ dir: cacheDir, now: () => clock });
-    cache.store('111', writeSource('tiktok_1.mp4'));
-    fs.rmSync(cacheDir, { recursive: true, force: true });
-    expect(cache.get('111')).toBeNull();
-  });
-
-  it('falls back to copy+unlink when rename fails across devices (EXDEV)', () => {
-    const cache = new TikTokFileCache({ dir: cacheDir, now: () => clock });
-    const source = writeSource('cross-device.mp4', 'payload');
-    vi.spyOn(fs, 'renameSync').mockImplementationOnce(() => {
-      const error = new Error('cross-device link not permitted') as NodeJS.ErrnoException;
-      error.code = 'EXDEV';
-      throw error;
-    });
-    cache.store('444', source);
-    const cached = cache.get('444');
-    expect(cached).not.toBeNull();
-    expect(fs.readFileSync(cached as string, 'utf-8')).toBe('payload');
-    expect(fs.existsSync(source)).toBe(false); // original cleaned up
-    vi.restoreAllMocks();
-  });
-
-  it('evicts the oldest entries when the total size limit is exceeded', () => {
-    const cache = new TikTokFileCache({ dir: cacheDir, maxTotalBytes: 250, now: () => clock });
-    cache.store('111', writeSource('a.mp4', 'a'.repeat(100)));
-    cache.store('222', writeSource('b.mp4', 'b'.repeat(100)));
-    cache.store('333', writeSource('c.mp4', 'c'.repeat(100)));
-    expect(cache.get('111')).toBeNull(); // oldest, evicted
-    expect(cache.get('222')).not.toBeNull();
-    expect(cache.get('333')).not.toBeNull();
   });
 });
 

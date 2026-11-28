@@ -7,11 +7,13 @@
  */
 
 import fs from 'fs';
+import path from 'path';
 import { left, right } from '@/utils/either.js';
 import { DownloadService, type DownloadResult } from './DownloadService.js';
+import { MediaFileCache } from './MediaFileCache.js';
 import { searchVideo, type YouTubeVideo } from './YouTubeSearchService.js';
 import { ValidationError, NetworkError } from '@/utils/errors.js';
-import { logger } from '@/utils/logger.js';
+import { logError, logger } from '@/utils/logger.js';
 
 export type { YouTubeVideo };
 
@@ -19,6 +21,12 @@ interface PlatformConfig {
   isTermux: boolean;
   maxAudioSizeMB: number;
   maxVideoSizeMB: number;
+}
+
+/** Options accepted by {@link YouTubeDownloader}. */
+export interface YouTubeDownloaderOptions {
+  /** Where cached media lives; defaults to data/youtube_cache. */
+  cacheDir?: string;
 }
 
 function detectPlatform(): PlatformConfig {
@@ -36,12 +44,27 @@ function detectPlatform(): PlatformConfig {
 }
 
 export class YouTubeDownloader extends DownloadService {
+  /** Popular songs get re-requested the same day; a day of reuse is plenty. */
+  private static readonly CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+  /** Disk budget for cached media; evicted oldest-first beyond it. */
+  private static readonly CACHE_MAX_BYTES = 1024 * 1024 * 1024;
+  /** Phones have little room to spare; a quarter of the desktop budget. */
+  private static readonly TERMUX_CACHE_MAX_BYTES = 250 * 1024 * 1024;
+
   private platform: PlatformConfig;
+  private readonly cache: MediaFileCache;
   private lastThumbnail: string | null = null;
 
-  constructor() {
+  constructor(options: YouTubeDownloaderOptions = {}) {
     super();
     this.platform = detectPlatform();
+    this.cache = new MediaFileCache({
+      dir: options.cacheDir ?? path.resolve('data', 'youtube_cache'),
+      ttlMs: YouTubeDownloader.CACHE_TTL_MS,
+      maxTotalBytes: this.platform.isTermux
+        ? YouTubeDownloader.TERMUX_CACHE_MAX_BYTES
+        : YouTubeDownloader.CACHE_MAX_BYTES,
+    });
   }
 
   protected getDownloadPrefix(): string {
@@ -74,6 +97,10 @@ export class YouTubeDownloader extends DownloadService {
   }
 
   async downloadAudio(videoId: string): Promise<DownloadResult> {
+    const cacheKey = `${videoId}.audio.mp3`;
+    const cached = this.copyFromCache(cacheKey, videoId, 'mp3');
+    if (cached) return cached;
+
     const outputPath = this.generateOutputPath(videoId, 'mp3');
 
     const methods = [
@@ -164,10 +191,16 @@ export class YouTubeDownloader extends DownloadService {
       },
     ];
 
-    return this.tryDownloadMethodsWithPlatform(methods, outputPath, 'audio');
+    const result = await this.tryDownloadMethodsWithPlatform(methods, outputPath, 'audio');
+    this.remember(cacheKey, result);
+    return result;
   }
 
   async downloadVideo(videoId: string, quality: string = '720'): Promise<DownloadResult> {
+    const cacheKey = `${videoId}.${quality}.mp4`;
+    const cached = this.copyFromCache(cacheKey, videoId, 'mp4');
+    if (cached) return cached;
+
     const outputPath = this.generateOutputPath(videoId, 'mp4');
 
     const qualityArg = this.platform.isTermux
@@ -253,7 +286,39 @@ export class YouTubeDownloader extends DownloadService {
       },
     ];
 
-    return this.tryDownloadMethodsWithPlatform(methods, outputPath, 'video');
+    const result = await this.tryDownloadMethodsWithPlatform(methods, outputPath, 'video');
+    this.remember(cacheKey, result);
+    return result;
+  }
+
+  /**
+   * Serves a cached file by copying it to a fresh temp path, or null on a miss.
+   *
+   * The copy matters: download commands delete the path they receive after
+   * sending, so handing out the cache file itself would empty the cache.
+   */
+  private copyFromCache(key: string, baseName: string, ext: string): DownloadResult | null {
+    const cached = this.cache.get(key);
+    if (!cached) return null;
+
+    try {
+      const target = this.generateOutputPath(baseName, ext);
+      fs.copyFileSync(cached, target);
+      const sizeMB = fs.statSync(target).size / (1024 * 1024);
+      logger.debug(`[YouTube] cache hit for ${key}`);
+      return right({ filePath: target, size: sizeMB.toFixed(1), source: 'cache' });
+    } catch (error) {
+      // A broken copy must fall back to a real download, not fail the command.
+      logError('YouTubeDownloader.copyFromCache', error);
+      return null;
+    }
+  }
+
+  /** Stores a successful download for the next request. */
+  private remember(key: string, result: DownloadResult): void {
+    if (result._tag === 'Right') {
+      this.cache.storeCopy(key, result.right.filePath);
+    }
   }
 
   private async tryDownloadMethodsWithPlatform(
