@@ -36,6 +36,19 @@ function collectCommandFiles(dir: string, acc: string[] = []): string[] {
   return acc;
 }
 
+/** Every TypeScript file, commands or not (bases and helpers included). */
+function collectSourceFiles(dir: string, acc: string[] = []): string[] {
+  for (const entry of readdirSync(dir)) {
+    const fullPath = join(dir, entry);
+    if (statSync(fullPath).isDirectory()) {
+      collectSourceFiles(fullPath, acc);
+    } else if (entry.endsWith('.ts')) {
+      acc.push(fullPath);
+    }
+  }
+  return acc;
+}
+
 function relativeFile(file: string): string {
   const idx = file.indexOf('src/commands');
   return idx >= 0 ? file.slice(idx) : file;
@@ -60,7 +73,11 @@ function parseClassCommands(source: string, file: string): ParsedCommand[] {
   const matches: { name: string; startIndex: number; endIndex: number }[] = [];
   let match: RegExpExecArray | null;
   while ((match = nameRe.exec(source)) !== null) {
-    matches.push({ name: match[1], startIndex: match.index, endIndex: match.index + match[0].length });
+    matches.push({
+      name: match[1],
+      startIndex: match.index,
+      endIndex: match.index + match[0].length,
+    });
   }
 
   for (let i = 0; i < matches.length; i++) {
@@ -161,6 +178,24 @@ describe('Command name and alias uniqueness', () => {
       }
     }
     expect(clashes).toEqual([]);
+  });
+
+  it('every file that declares a command is named *Command.ts so the loader finds it', () => {
+    // Real case, since fixed: owner/system/LicenseCommands.ts declared
+    // setplan/verplan/cancelar, but the loader only scans *Command.ts, so the
+    // three commands simply did not exist at runtime. A new command in a file
+    // with any other name would disappear the same silent way.
+    const offenders: string[] = [];
+    for (const file of collectSourceFiles(COMMANDS_DIR)) {
+      const source = readFileSync(file, 'utf-8');
+      // Abstract bases (PoesiaBase, CanvasBase, ...) hold no concrete command.
+      if (/export\s+abstract\s+class/.test(source)) continue;
+      const declaresCommand =
+        /extends\s+[\w.]*(?:Command|Base)\b/.test(source) &&
+        /(?:^|\n)\s*name\s*=\s*'[^']+'/.test(source);
+      if (declaresCommand && !/Command\.ts$/.test(file)) offenders.push(relativeFile(file));
+    }
+    expect(offenders).toEqual([]);
   });
 
   it('every command has a valid name and no repeated aliases in its own array', () => {

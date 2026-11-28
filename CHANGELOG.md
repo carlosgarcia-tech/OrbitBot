@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [8.2.19] - 2026-11-27
+
+### Added
+
+- The pipeline traces every message at `info` level: arrival (id, chat, text), why it was discarded, the chosen lane with its flags and category, queue depth and who is running, start/finish with wait and duration, and every external process with the time it waited for a slot. `[msg]`, `[lane]`, `[cmd]` and `[proc]` prefixes make one command traceable end to end. Docker still defaults to `LOG_LEVEL=warn`, so set `LOG_LEVEL=info` in `.env` to see them.
+
+### Fixed
+
+- Commands that were not loaded yet at boot (only 190 are) were classified as `sequential` when the lane was chosen, because their flags were unknown: `!tt` and `!wm` ran one after the other even though they can overlap. The pipeline now imports and registers the command before choosing the lane, so lazy commands take their real lane on first use. Two-word names (`rules clk`) resolve lazily too.
+- Two users running the same lazy command for the first time at once imported and instantiated it twice, so a constructor with side effects ran twice and the registry kept the last copy. Concurrent lookups now share one load.
+- A command file that does not end in `Command.ts` was never scanned: `owner/system/LicenseCommands.ts` shipped three commands (`setplan`, `verplan`, `cancelar`) that did not exist at runtime. Renamed to `LicenseCommand.ts` so they load, and a test now fails if a file declaring a command breaks that naming rule.
+- A command module that exports nothing valid (missing `name` or `execute`) is now logged with its path at boot instead of only surfacing as "command not found".
+- `!wm` / `!take` no longer waits behind two downloads: renaming a sticker only downloads media and rewrites its metadata, so it now runs in the parallel lane instead of the heavy one.
+
 ## [8.2.18] - 2026-11-27
 
 ### Added
@@ -15,7 +29,7 @@ and versioning follows [Semantic Versioning](https://semver.org/).
 
 - All downloaders share a global limit of two external processes. A third `yt-dlp`/`ffmpeg` waits in FIFO order instead of competing for CPU, which is what a basic VPS and a phone running Termux can sustain, and the limit is honest because the slot is taken before the process is spawned.
 - Commands now run in the parallel lane by default (up to 5 at once) instead of queueing behind each other. Only the categories that do read-modify-write on shared state (economy, games, RPG, moderation, group settings, admin, owner, subbots) and the commands that opt out explicitly stay on the sequential lane. This fixes the reported behaviour where a second command was not read until the first one finished.
-- Media commands that do real work but had no `heavy` flag (audio effects, watermark, GIF, take, Spotify playlists/albums, Threads, to-anime, git clone) now use the heavy lane, so they cannot fill all parallel slots.
+- Media commands that do real work but had no `heavy` flag (audio effects, watermark, GIF, Spotify playlists/albums, Threads, to-anime, git clone) now use the heavy lane, so they cannot fill all parallel slots.
 - Download errors keep only the last 8 KB of `yt-dlp` stderr, so a noisy run can no longer grow that string without bound. stdout is still returned whole because metadata calls parse it as JSON.
 - The TikTok disk cache moved into a shared `MediaFileCache` (same TTL/eviction behaviour) so YouTube reuses it instead of duplicating the logic; cache keys that could escape the cache directory are rejected.
 
