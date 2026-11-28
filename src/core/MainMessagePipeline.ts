@@ -173,10 +173,18 @@ export class MainMessagePipeline {
    * sequential/parallel scheduling) inside a microtask.
    */
   private handleMessage(message: WAMessage): void {
+    const messageId = message.key.id ?? 'sin-id';
+    const summary =
+      `[msg] recibido id=${messageId} chat=${message.key.remoteJid ?? '?'} ` +
+      `de=${message.key.participant ?? message.key.remoteJid ?? '?'} ` +
+      `texto="${this.textPreview(message)}"`;
+    if (message.key.fromMe) logger.debug(`${summary} (propio)`);
+    else logger.info(summary);
+
     if (!this.isProcessableMessage(message)) return;
-    const messageId = message.key.id as string;
 
     if (this.isPreStartupEcho(message)) {
+      logger.info(`[msg] id=${messageId} descartado: eco anterior al arranque`);
       processedMessagesRepository.markProcessed(messageId, this.mainBotId as string);
       cacheManager.markMessageProcessed(messageId);
       return;
@@ -195,14 +203,21 @@ export class MainMessagePipeline {
               const ctx = new MessageContext(this.sock, message, 'main');
 
               const stop = await this.runGuards(ctx, messageId);
-              if (stop) return;
+              if (stop) {
+                logger.info(`[msg] id=${messageId} detenido en los guards`);
+                return;
+              }
 
               if (!ctx.command) {
+                logger.debug(`[msg] id=${messageId} sin comando resuelto`);
                 cacheManager.markMessageProcessed(messageId);
                 return;
               }
 
-              if (!this.checkRateLimits(ctx)) return;
+              if (!this.checkRateLimits(ctx)) {
+                logger.info(`[msg] id=${messageId} bloqueado por rate limit`);
+                return;
+              }
 
               await this.resolveAndExecute(ctx, messageId, startTime);
             } catch (error) {
@@ -218,11 +233,34 @@ export class MainMessagePipeline {
 
   /** Cheap synchronous validity checks. */
   private isProcessableMessage(message: WAMessage): boolean {
-    if (!message?.message || message.key.fromMe) return false;
-    const messageId = message.key.id;
-    if (!messageId) return false;
-    if (cacheManager.hasProcessedMessage(messageId)) return false;
+    const id = message?.key?.id ?? 'sin-id';
+    if (!message?.message) {
+      logger.info(`[msg] id=${id} descartado: sin contenido`);
+      return false;
+    }
+    if (message.key.fromMe) {
+      logger.debug(`[msg] id=${id} descartado: mensaje propio`);
+      return false;
+    }
+    if (!message.key.id) {
+      logger.info('[msg] descartado: sin id de mensaje');
+      return false;
+    }
+    if (cacheManager.hasProcessedMessage(message.key.id)) {
+      logger.info(`[msg] id=${id} descartado: ya estaba marcado como procesado`);
+      return false;
+    }
     return true;
+  }
+
+  /** One-line summary of the message text (or its media type) for the logs. */
+  private textPreview(message: WAMessage): string {
+    const text = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
+    if (text) return text.replace(/\s+/g, ' ').slice(0, 80);
+    const kind = message.message
+      ? (Object.keys(message.message)[0] ?? 'desconocido')
+      : 'desconocido';
+    return `<${kind}>`;
   }
 
   /**
@@ -254,13 +292,21 @@ export class MainMessagePipeline {
   private commandLane(message: WAMessage): MessageLane {
     const text = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
     const matchedPrefix = matchCommandPrefix(text);
-    if (matchedPrefix === undefined) return 'sequential';
+    if (matchedPrefix === undefined) {
+      logger.debug('[lane] sin prefijo de comando → sequential');
+      return 'sequential';
+    }
 
     const commandRest = text.slice(matchedPrefix.length);
     const commandName = commandRest.split(' ')[0]?.toLowerCase() ?? '';
     const fullCommandName = commandRest.toLowerCase();
     const cmd = commandRegistry.get(fullCommandName) || commandRegistry.get(commandName);
-    return laneForCommand(cmd);
+    const lane = laneForCommand(cmd);
+    logger.info(
+      `[lane] comando=${commandName} elegido=${lane} categoria=${cmd?.category ?? 'desconocida'} ` +
+        `parallelizable=${cmd?.parallelizable ?? 'auto'} heavy=${Boolean(cmd?.heavy)}`,
+    );
+    return lane;
   }
 
   /**
@@ -540,11 +586,16 @@ export class MainMessagePipeline {
     command: NonNullable<ReturnType<typeof commandRegistry.get>>,
   ): Promise<void> {
     const cmdStartTime = Date.now();
+    const messageId = ctx.message.key.id ?? 'sin-id';
+    logger.info(`[cmd] id=${messageId} nombre=${command.name} inicio`);
     try {
       await withTimeout(
         command.execute(ctx),
         command.timeout ?? COMMAND_TIMEOUT_MS,
         `Command ${command.name} timed out after ${command.timeout ?? COMMAND_TIMEOUT_MS}ms`,
+      );
+      logger.info(
+        `[cmd] id=${messageId} nombre=${command.name} fin duracion=${Date.now() - cmdStartTime}ms`,
       );
       this.stats.commandsExecuted++;
       this.trackCommandMetric(command.name, Date.now() - cmdStartTime, false);
@@ -554,11 +605,12 @@ export class MainMessagePipeline {
         // the command keeps running in the background and will still deliver
         // its result — a slow download over a bad network is normal, not an
         // error, so never kill it or tell the user it failed.
-        logger.info(`⏳ ${command.name} sigue ejecutándose en segundo plano`);
+        logger.info(`⏳ id=${messageId} ${command.name} sigue ejecutándose en segundo plano`);
         return;
       }
       this.stats.errorsCount++;
       this.trackCommandMetric(command.name, Date.now() - cmdStartTime, true);
+      logger.error(`[cmd] id=${messageId} nombre=${command.name} error`, { error });
       logError('Command', new CommandExecutionError(ctx.command, error));
       await ctx
         .reply('Error al ejecutar el comando.')
