@@ -190,6 +190,8 @@ export class MainMessagePipeline {
       return;
     }
 
+    // Starts resolving the command now (lazy commands need an import); the
+    // microtask below awaits it before scheduling.
     const lane = this.commandLane(message);
     this.stats.messagesReceived++;
 
@@ -224,7 +226,7 @@ export class MainMessagePipeline {
               logError('handleMessageRealTime', error);
             }
           },
-          lane,
+          await lane,
         );
         this.maybeLogStats();
       })();
@@ -286,10 +288,10 @@ export class MainMessagePipeline {
    *
    * Non-command traffic keeps the sequential lane: its handlers are short
    * guard checks, so it cannot hold up a command that now runs in parallel.
-   * Lazy commands that are not registered yet also fall back to sequential;
-   * after their first use they are registered and take the right lane.
+   * Lazy commands that are not registered yet are imported here first, so the
+   * lane comes from their real flags instead of falling back to sequential.
    */
-  private commandLane(message: WAMessage): MessageLane {
+  private async commandLane(message: WAMessage): Promise<MessageLane> {
     const text = message.message?.conversation || message.message?.extendedTextMessage?.text || '';
     const matchedPrefix = matchCommandPrefix(text);
     if (matchedPrefix === undefined) {
@@ -300,11 +302,24 @@ export class MainMessagePipeline {
     const commandRest = text.slice(matchedPrefix.length);
     const commandName = commandRest.split(' ')[0]?.toLowerCase() ?? '';
     const fullCommandName = commandRest.toLowerCase();
-    const cmd = commandRegistry.get(fullCommandName) || commandRegistry.get(commandName);
+    let cmd = commandRegistry.get(fullCommandName) || commandRegistry.get(commandName);
+
+    // Only 190 commands load at boot; the rest are lazy, and an unregistered
+    // command has no flags yet, so it used to be classified as sequential.
+    let lazy = false;
+    if (!cmd && commandName) {
+      const loaded = await pluginLoader.getCommand(commandName);
+      if (loaded) {
+        commandRegistry.register(loaded);
+        cmd = loaded;
+        lazy = true;
+      }
+    }
+
     const lane = laneForCommand(cmd);
     logger.info(
       `[lane] comando=${commandName} elegido=${lane} categoria=${cmd?.category ?? 'desconocida'} ` +
-        `parallelizable=${cmd?.parallelizable ?? 'auto'} heavy=${Boolean(cmd?.heavy)}`,
+        `parallelizable=${cmd?.parallelizable ?? 'auto'} heavy=${Boolean(cmd?.heavy)} lazy=${lazy}`,
     );
     return lane;
   }

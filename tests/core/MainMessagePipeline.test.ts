@@ -910,6 +910,26 @@ describe('MainMessagePipeline', () => {
       );
     });
 
+    it('loads a lazy command before choosing its lane', async () => {
+      const { fire, messageProcessor } = createPipeline();
+      mockGetCommand.mockResolvedValue({
+        name: 'pipelazyheavy',
+        description: 'lazy heavy command',
+        category: CommandCategory.MEDIA,
+        heavy: true,
+        execute: vi.fn().mockResolvedValue(undefined),
+      } satisfies ICommand);
+
+      fireUpsert(fire, makeMessage('.pipelazyheavy x'));
+      await flush();
+
+      expect(messageProcessor.process).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Function),
+        'heavy',
+      );
+    });
+
     it('loads sender and bot permissions for permission-gated commands', async () => {
       const { fire } = createPipeline();
       const senderSpy = vi.spyOn(MessageContext.prototype, 'loadSenderPermissions');
