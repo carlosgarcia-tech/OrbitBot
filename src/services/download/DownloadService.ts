@@ -154,7 +154,18 @@ export class DownloadService {
    * @returns The process' stdout, which callers may parse as JSON.
    */
   protected runCommand(cmd: string, args: string[], timeout: number = 90000): Promise<string> {
-    return processSlots.run(() => this.spawnCommand(cmd, args, timeout));
+    const enqueuedAt = Date.now();
+    const detail = args.join(' ').slice(0, 160);
+    return processSlots.run(async () => {
+      logger.info(
+        `[proc] inicio cmd=${cmd} espera-hueco=${Date.now() - enqueuedAt}ms args="${detail}"`,
+      );
+      try {
+        return await this.spawnCommand(cmd, args, timeout);
+      } finally {
+        logger.info(`[proc] fin cmd=${cmd} duracion=${Date.now() - enqueuedAt}ms`);
+      }
+    });
   }
 
   /**
