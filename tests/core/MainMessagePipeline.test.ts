@@ -854,6 +854,48 @@ describe('MainMessagePipeline', () => {
       );
     });
 
+    it('runs ordinary commands in parallel by default instead of queueing them', async () => {
+      const { fire, messageProcessor } = createPipeline();
+      registerCommand('pipeutil');
+
+      fireUpsert(fire, makeMessage('.pipeutil x'));
+      await flush();
+
+      expect(messageProcessor.process).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Function),
+        'parallel',
+      );
+    });
+
+    it('keeps commands from state-mutating categories sequential', async () => {
+      const { fire, messageProcessor } = createPipeline();
+      registerCommand('pipeeco', { category: CommandCategory.ECONOMY });
+
+      fireUpsert(fire, makeMessage('.pipeeco x'));
+      await flush();
+
+      expect(messageProcessor.process).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Function),
+        'sequential',
+      );
+    });
+
+    it('honours an explicit sequential opt-out on an ordinary category', async () => {
+      const { fire, messageProcessor } = createPipeline();
+      registerCommand('pipeserial', { parallelizable: false });
+
+      fireUpsert(fire, makeMessage('.pipeserial x'));
+      await flush();
+
+      expect(messageProcessor.process).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Function),
+        'sequential',
+      );
+    });
+
     it('routes heavy commands to their own lane', async () => {
       const { fire, messageProcessor } = createPipeline();
       registerCommand('pipeheavy', { heavy: true });

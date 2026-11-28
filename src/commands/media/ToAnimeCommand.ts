@@ -20,6 +20,7 @@ export class ToAnimeCommand extends Command {
   name = 'toanime';
   description = 'Convertir imagen a estilo anime';
   category = CommandCategory.MEDIA;
+  heavy = true;
   aliases = ['toanime', 'toghibli'];
   usage = '!toanime (responde a imagen)';
   examples = ['!toanime'];

@@ -22,6 +22,7 @@ export class SpotifyalbumCommand extends Command {
   name = 'spotifyalbum';
   description = 'Descarga albums completos de Spotify';
   category = CommandCategory.MEDIA;
+  heavy = true;
   aliases = ['spalbum', 'sp-album'];
   cooldown = 120000;
   contexts = [CommandContext.BOTH];

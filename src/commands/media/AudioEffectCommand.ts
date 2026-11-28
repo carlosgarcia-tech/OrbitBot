@@ -45,6 +45,7 @@ export class AudioEffectCommand extends Command {
   name = 'audiofx';
   description = 'Aplicar efectos de audio';
   category = CommandCategory.MEDIA;
+  heavy = true;
   aliases = Object.keys(EFFECTS);
   usage = '!<efecto> responde a un audio';
   examples = Object.keys(EFFECTS).map(e => `!${e} (responde a audio)`);

@@ -17,6 +17,8 @@ export class ReminderCommand extends Command {
   name = 'recordatorio';
   description = 'Programa recordatorios y alarmas personales.';
   category = CommandCategory.UTILITY;
+  // Mutates shared user state: keep on the sequential lane.
+  parallelizable = false;
   aliases = ['remind', 'alarma', 'recordar', 'timer'];
   usage = '!recordatorio <tiempo> <mensaje>';
   examples = [

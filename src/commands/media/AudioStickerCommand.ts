@@ -63,6 +63,7 @@ export class AudioStickerCommand extends Command {
   name = 'saudio';
   description = 'Crea un sticker con audio';
   category = CommandCategory.MEDIA;
+  heavy = true;
   aliases = ['sa', 'stickeraudio'];
   usage =
     '!saudio <responde a un video con audio> | foto/video con !saudio respondiendo a un audio';

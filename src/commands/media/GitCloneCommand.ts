@@ -23,6 +23,7 @@ export class GitCloneCommand extends Command {
   name = 'gitclon';
   description = 'Clonar repositorio de GitHub';
   category = CommandCategory.MEDIA;
+  heavy = true;
   aliases = ['clone', 'clonar'];
   usage = '!gitclon <URL>';
   examples = ['!gitclon https://github.com/username/repo'];

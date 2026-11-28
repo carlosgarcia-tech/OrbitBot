@@ -22,6 +22,7 @@ export class ThreadsCommand extends Command {
   name = 'threads';
   description = 'Descarga contenido de Threads';
   category = CommandCategory.MEDIA;
+  heavy = true;
   aliases = ['thread'];
   cooldown = 15000;
   contexts = [CommandContext.BOTH];

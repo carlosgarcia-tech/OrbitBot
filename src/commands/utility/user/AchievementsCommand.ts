@@ -18,6 +18,8 @@ export class AchievementsCommand extends Command {
   name = 'achievements';
   description = 'Muestra tus logros desbloqueados';
   category = CommandCategory.UTILITY;
+  // Mutates shared user state: keep on the sequential lane.
+  parallelizable = false;
   requiresRegistration = true;
   aliases = ['logros', 'trofeos', 'trophies'];
   usage = '!achievements [@usuario]';

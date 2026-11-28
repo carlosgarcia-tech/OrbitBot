@@ -14,6 +14,8 @@ and versioning follows [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - All downloaders share a global limit of two external processes. A third `yt-dlp`/`ffmpeg` waits in FIFO order instead of competing for CPU, which is what a basic VPS and a phone running Termux can sustain, and the limit is honest because the slot is taken before the process is spawned.
+- Commands now run in the parallel lane by default (up to 5 at once) instead of queueing behind each other. Only the categories that do read-modify-write on shared state (economy, games, RPG, moderation, group settings, admin, owner, subbots) and the commands that opt out explicitly stay on the sequential lane. This fixes the reported behaviour where a second command was not read until the first one finished.
+- Media commands that do real work but had no `heavy` flag (audio effects, watermark, GIF, take, Spotify playlists/albums, Threads, to-anime, git clone) now use the heavy lane, so they cannot fill all parallel slots.
 - Download errors keep only the last 8 KB of `yt-dlp` stderr, so a noisy run can no longer grow that string without bound. stdout is still returned whole because metadata calls parse it as JSON.
 - The TikTok disk cache moved into a shared `MediaFileCache` (same TTL/eviction behaviour) so YouTube reuses it instead of duplicating the logic; cache keys that could escape the cache directory are rejected.
 
