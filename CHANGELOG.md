@@ -13,7 +13,10 @@ and versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- Commands that were not loaded yet at boot (only 190 are) were classified as `sequential` when the lane was chosen, because their flags were unknown: `!tt` and `!wm` ran one after the other even though they can overlap. The pipeline now imports and registers the command before choosing the lane, so lazy commands take their real lane on first use.
+- Commands that were not loaded yet at boot (only 190 are) were classified as `sequential` when the lane was chosen, because their flags were unknown: `!tt` and `!wm` ran one after the other even though they can overlap. The pipeline now imports and registers the command before choosing the lane, so lazy commands take their real lane on first use. Two-word names (`rules clk`) resolve lazily too.
+- Two users running the same lazy command for the first time at once imported and instantiated it twice, so a constructor with side effects ran twice and the registry kept the last copy. Concurrent lookups now share one load.
+- A command file that does not end in `Command.ts` was never scanned: `owner/system/LicenseCommands.ts` shipped three commands (`setplan`, `verplan`, `cancelar`) that did not exist at runtime. Renamed to `LicenseCommand.ts` so they load, and a test now fails if a file declaring a command breaks that naming rule.
+- A command module that exports nothing valid (missing `name` or `execute`) is now logged with its path at boot instead of only surfacing as "command not found".
 - `!wm` / `!take` no longer waits behind two downloads: renaming a sticker only downloads media and rewrites its metadata, so it now runs in the parallel lane instead of the heavy one.
 
 ## [8.2.18] - 2026-11-27

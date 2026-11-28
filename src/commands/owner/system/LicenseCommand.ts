@@ -70,7 +70,7 @@ export class SetPlanCommand extends Command {
 
   private async showHelp(ctx: MessageContext): Promise<void> {
     let help = `📋 *SetPlan - Asignar Plan de Licencia*\n\n`;
-    help += `*用法:* .setplan <jid> <permanent|monthly> <bots>\n\n`;
+    help += `*Uso:* .setplan <jid> <permanent|monthly> <bots>\n\n`;
     help += `*Ejemplos:*\n`;
     help += `• .setplan 5215555555555@g.us permanent 1\n`;
     help += `• .setplan 5215555555555@g.us monthly 3\n\n`;
@@ -100,7 +100,7 @@ export class VerPlanCommand extends Command {
     const targetJid = ctx.args.length > 0 ? ctx.args[0] : ctx.chat.isGroup ? ctx.chat.jid : null;
 
     if (!targetJid) {
-      await ctx.reply(`*用法:* .verplan [jid]\n*Ejemplo:* .verplan 5215555555555@g.us`);
+      await ctx.reply(`*Uso:* .verplan [jid]\n*Ejemplo:* .verplan 5215555555555@g.us`);
       return;
     }
 
@@ -120,7 +120,7 @@ export class CancelLicenseCommand extends Command {
     const targetJid = ctx.args[0];
 
     if (!targetJid) {
-      await ctx.reply(`*用法:* .cancelar <jid>\n*Ejemplo:* .cancelar 5215555555555@g.us`);
+      await ctx.reply(`*Uso:* .cancelar <jid>\n*Ejemplo:* .cancelar 5215555555555@g.us`);
       return;
     }
 

@@ -308,7 +308,11 @@ export class MainMessagePipeline {
     // command has no flags yet, so it used to be classified as sequential.
     let lazy = false;
     if (!cmd && commandName) {
-      const loaded = await pluginLoader.getCommand(commandName);
+      // Two-word names (`rules clk`) are valid commands too.
+      const twoWordName = commandRest.split(/\s+/).slice(0, 2).join(' ').toLowerCase();
+      const loaded =
+        (twoWordName !== commandName ? await pluginLoader.getCommand(twoWordName) : null) ??
+        (await pluginLoader.getCommand(commandName));
       if (loaded) {
         commandRegistry.register(loaded);
         cmd = loaded;
@@ -529,7 +533,10 @@ export class MainMessagePipeline {
       (fullCommand ? commandRegistry.get(fullCommand) : null) ?? commandRegistry.get(ctx.command);
 
     if (!command) {
-      const lazyCmd = await pluginLoader.getCommand(ctx.command);
+      // Same lazy fallback as the lane: two-word name first, then the bare one.
+      const lazyCmd =
+        (fullCommand ? await pluginLoader.getCommand(fullCommand) : null) ??
+        (await pluginLoader.getCommand(ctx.command));
       if (lazyCmd) {
         commandRegistry.register(lazyCmd);
         command = lazyCmd;

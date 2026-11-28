@@ -53,6 +53,8 @@ export class PluginLoader {
   /** Deferred commands: command name -> file that would provide it. */
   private commandFiles: Map<string, string> = new Map();
   private lazyCache: LruMemoryCache<ICommand>;
+  /** Imports in progress, so concurrent lookups share one module load. */
+  private inflightLoads: Map<string, Promise<ICommand[]>> = new Map();
   private lazyLoadingEnabled = true;
   /** Categories imported eagerly at startup; everything else loads on demand. */
   private preloadCategories: Set<string> = new Set();
@@ -229,12 +231,31 @@ export class PluginLoader {
   }
 
   private async loadCommandFile(filePath: string): Promise<ICommand[]> {
+    // Two messages for the same lazy command arriving together would import
+    // and instantiate it twice; the second instance overwrites the first in
+    // the registry, so a constructor with side effects runs twice.
+    const inFlight = this.inflightLoads.get(filePath);
+    if (inFlight) return inFlight;
+
+    const load = this.importCommandFile(filePath).finally(() => {
+      this.inflightLoads.delete(filePath);
+    });
+    this.inflightLoads.set(filePath, load);
+    return load;
+  }
+
+  private async importCommandFile(filePath: string): Promise<ICommand[]> {
     const results: ICommand[] = [];
 
     try {
       const fileUrl = `file://${filePath.replace(/\\/g, '/')}`;
       const module: Record<string, unknown> = await import(fileUrl);
       const extracted = this.extractCommands(module, filePath);
+      if (extracted.length === 0) {
+        // A new command with a missing `name`/`execute` would otherwise be
+        // indexed nowhere and only surface as "command not found" at runtime.
+        logger.warn(`[loader] ${filePath} no exporta un comando válido (name + execute)`);
+      }
 
       results.push(...extracted);
     } catch (error) {

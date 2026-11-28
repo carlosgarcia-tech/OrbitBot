@@ -185,7 +185,7 @@ OrbitBot/
 │   ├── orbit.ts                # Supervisor: spawns the bot, IPC "ready", restart backoff
 │   ├── index.ts                # Entry point: database → client → panel
 │   │
-│   ├── commands/               # One file per command, auto-registered (15 categories)
+│   ├── commands/               # One file per command (*Command.ts), auto-registered (15 categories)
 │   │   ├── admin/              #   moderation (kick, warn, mutelist...)
 │   │   ├── anime/              #   ~70 reaction commands (data-driven)
 │   │   ├── creative/           #   poetry suite, canvas (quote cards...)

@@ -930,6 +930,45 @@ describe('MainMessagePipeline', () => {
       );
     });
 
+    it('respects the category of a lazy command when picking its lane', async () => {
+      const { fire, messageProcessor } = createPipeline();
+      mockGetCommand.mockResolvedValue({
+        name: 'pipelazyeconomy',
+        description: 'lazy economy command',
+        category: CommandCategory.ECONOMY,
+        execute: vi.fn().mockResolvedValue(undefined),
+      } satisfies ICommand);
+
+      fireUpsert(fire, makeMessage('.pipelazyeconomy'));
+      await flush();
+
+      expect(messageProcessor.process).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Function),
+        'sequential',
+      );
+    });
+
+    it('loads a lazy two-word command and strips the consumed word', async () => {
+      const { fire } = createPipeline();
+      const execute = vi.fn().mockResolvedValue(undefined);
+      const lazyCommand: ICommand = {
+        name: 'pipeword cmd',
+        description: 'lazy two-word command',
+        category: CommandCategory.UTILITY,
+        execute,
+      };
+      mockGetCommand.mockImplementation((name: unknown) =>
+        Promise.resolve(name === 'pipeword cmd' ? lazyCommand : null),
+      );
+
+      fireUpsert(fire, makeMessage('.pipeword cmd x'));
+      await flush();
+
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect((execute.mock.calls[0][0] as IMessageContext).args).toEqual(['x']);
+    });
+
     it('loads sender and bot permissions for permission-gated commands', async () => {
       const { fire } = createPipeline();
       const senderSpy = vi.spyOn(MessageContext.prototype, 'loadSenderPermissions');
