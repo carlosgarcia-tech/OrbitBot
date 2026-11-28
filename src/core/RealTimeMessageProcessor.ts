@@ -29,7 +29,6 @@
  */
 
 import { EventEmitter } from 'events';
-import { logger } from '@/utils/logger.js';
 
 /** Concurrency class of a message. */
 export type MessageLane = 'sequential' | 'parallel' | 'heavy';
@@ -43,9 +42,6 @@ const HEAVY_MAX = 2;
 interface QueuedMessage {
   id: string;
   handler: () => Promise<void>;
-  lane: MessageLane;
-  /** When the message was enqueued; the start log reports how long it waited. */
-  enqueuedAt: number;
 }
 
 /** Capped FIFO lane shared by the parallel and heavy classes. */
@@ -65,8 +61,6 @@ export class RealTimeMessageProcessor extends EventEmitter {
   private readonly heavyLane: CappedLane = { queue: [], active: 0, max: HEAVY_MAX };
   /** Guard flag preventing a second sequential drain loop from starting. */
   private isProcessingSequential = false;
-  /** Message the sequential lane is running right now, for the queue log. */
-  private activeSequentialId: string | null = null;
 
   /**
    * Enqueues a message handler on the queue matching its concurrency class.
@@ -81,28 +75,15 @@ export class RealTimeMessageProcessor extends EventEmitter {
     handler: () => Promise<void>,
     lane: MessageLane = 'sequential',
   ): Promise<boolean> {
-    if (this.pending.has(messageId)) {
-      logger.info(`[lane] id=${messageId} ignorado: ya está en cola o ejecutándose`);
-      return false;
-    }
+    if (this.pending.has(messageId)) return false;
     this.pending.add(messageId);
 
-    const item: QueuedMessage = { id: messageId, handler, lane, enqueuedAt: Date.now() };
-
     if (lane === 'sequential') {
-      this.sequentialQueue.push(item);
-      logger.info(
-        `[lane] encolado lane=sequential id=${messageId} cola=${this.sequentialQueue.length} ` +
-          `ejecutando=${this.activeSequentialId ?? 'nada'}`,
-      );
+      this.sequentialQueue.push({ id: messageId, handler });
       setImmediate(() => void this.processSequentialQueue());
     } else {
       const target = lane === 'heavy' ? this.heavyLane : this.parallelLane;
-      target.queue.push(item);
-      logger.info(
-        `[lane] encolado lane=${lane} id=${messageId} cola=${target.queue.length} ` +
-          `activos=${target.active}/${target.max}`,
-      );
+      target.queue.push({ id: messageId, handler });
       setImmediate(() => void this.drainLane(target));
     }
     return true;
@@ -115,22 +96,11 @@ export class RealTimeMessageProcessor extends EventEmitter {
    * lane that owns the item can keep draining.
    */
   private async runItem(item: QueuedMessage): Promise<void> {
-    const startedAt = Date.now();
-    logger.info(
-      `[lane] inicio lane=${item.lane} id=${item.id} espera=${startedAt - item.enqueuedAt}ms`,
-    );
     this.processing.add(item.id);
     try {
       await item.handler();
-      logger.info(
-        `[lane] fin lane=${item.lane} id=${item.id} duracion=${Date.now() - startedAt}ms`,
-      );
       this.emit('processed', item.id);
     } catch (error) {
-      logger.error(
-        `[lane] error lane=${item.lane} id=${item.id} duracion=${Date.now() - startedAt}ms`,
-        { error },
-      );
       this.emit('error', item.id, error);
     } finally {
       this.processing.delete(item.id);
@@ -175,12 +145,7 @@ export class RealTimeMessageProcessor extends EventEmitter {
       while (this.sequentialQueue.length > 0) {
         const item = this.sequentialQueue.shift();
         if (!item) break;
-        this.activeSequentialId = item.id;
-        try {
-          await this.runItem(item);
-        } finally {
-          this.activeSequentialId = null;
-        }
+        await this.runItem(item);
       }
     } finally {
       this.isProcessingSequential = false;
